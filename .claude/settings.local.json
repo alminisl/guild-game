@@ -7,7 +7,9 @@
       "Bash(cmd /c \"dir /s /b \"\"C:\\\\Program Files\\\\love.exe\"\" 2>nul\")",
       "Bash(cmd /c:*)",
       "Bash(start \"\" \"C:\\\\Program Files\\\\LOVE\\\\love.exe\" \"F:\\\\MyGames\\\\LovePrototype\")",
-      "Bash(dir \"C:\\\\Program Files\\\\LOVE\")"
+      "Bash(dir \"C:\\\\Program Files\\\\LOVE\")",
+      "Bash(dir /s /b \"F:\\\\MyGames\\\\LovePrototype\\\\assets\\\\Buildings\")",
+      "Bash(dir /s /b \"F:\\\\MyGames\\\\LovePrototype\\\\assets\\\\Terrain\\\\Resources\\\\Wood\\\\Trees\")"
     ]
   }
 }

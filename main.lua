@@ -24,6 +24,7 @@ local PotionMenu = require("ui.potion_menu")
 local QuestResultModal = require("ui.quest_result_modal")
 local SaveMenu = require("ui.save_menu")
 local SaveSystem = require("systems.save_system")
+local SettingsMenu = require("ui.settings_menu")
 
 -- Game States
 local STATE = {
@@ -32,7 +33,8 @@ local STATE = {
     GUILD = "guild",
     ARMORY = "armory",
     POTION = "potion",
-    SAVE_MENU = "save_menu"
+    SAVE_MENU = "save_menu",
+    SETTINGS = "settings"
 }
 
 -- Game data (central state)
@@ -73,7 +75,7 @@ local QUEST_REFRESH_INTERVAL = 60  -- New quest every 60 seconds
 -- Initialize game
 function love.load()
     love.window.setTitle("Guild Management - Day 1")
-    love.window.setMode(1280, 720, {resizable = true, minwidth = 800, minheight = 600})
+    love.window.setMode(1920, 1080, {resizable = true, minwidth = 1280, minheight = 720})
     love.graphics.setBackgroundColor(0.1, 0.1, 0.15)
 
     -- Seed random
@@ -110,6 +112,9 @@ function love.load()
 
     -- Preload hero sprites
     SpriteSystem.preloadAll()
+
+    -- Initialize settings menu
+    SettingsMenu.init()
 end
 
 -- Update game (real-time)
@@ -249,6 +254,14 @@ function love.draw()
     elseif currentState == STATE.SAVE_MENU then
         Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
         SaveMenu.draw(gameData)
+    elseif currentState == STATE.SETTINGS then
+        Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
+        SettingsMenu.draw(gameData)
+    end
+
+    -- Draw settings button on all town-based screens (except when settings is open)
+    if currentState ~= STATE.SETTINGS then
+        SettingsMenu.drawSettingsButton()
     end
 
     -- Draw quest result modal (on top of everything except notifications)
@@ -313,6 +326,12 @@ function love.mousepressed(x, y, button)
         return
     end
 
+    -- Check settings button click (on all screens except settings)
+    if currentState ~= STATE.SETTINGS and SettingsMenu.isSettingsButtonClicked(x, y) then
+        currentState = STATE.SETTINGS
+        return
+    end
+
     if currentState == STATE.TOWN then
         -- Check day/night toggle button first (only works when time period is ending)
         if Town.getDayNightButtonAt(x, y, gameData, TimeSystem) then
@@ -345,8 +364,7 @@ function love.mousepressed(x, y, button)
             currentState = STATE.ARMORY
         elseif buildingId == "potion" then
             currentState = STATE.POTION
-        elseif buildingId == "save" then
-            currentState = STATE.SAVE_MENU
+        -- Archives building no longer opens save menu (use Settings instead)
         end
 
     elseif currentState == STATE.TAVERN then
@@ -412,6 +430,23 @@ function love.mousepressed(x, y, button)
         elseif result == "error" then
             addNotification(message, "error")
         end
+
+    elseif currentState == STATE.SETTINGS then
+        local result, message = SettingsMenu.handleClick(x, y, gameData, Heroes, Quests, GuildSystem, TimeSystem)
+        if result == "close" then
+            currentState = STATE.TOWN
+            SettingsMenu.resetState()
+        elseif result == "saved" then
+            addNotification(message or "Game saved!", "success")
+        elseif result == "loaded" then
+            addNotification(message or "Game loaded!", "success")
+        elseif result == "resolution_changed" then
+            addNotification("Resolution changed to " .. (message or ""), "info")
+        elseif result == "fullscreen_toggled" then
+            addNotification("Fullscreen toggled", "info")
+        elseif result == "error" then
+            addNotification(message, "error")
+        end
     end
 end
 
@@ -429,6 +464,7 @@ function love.keypressed(key)
             PotionMenu.resetState()
             ArmoryMenu.resetState()
             SaveMenu.resetState()
+            SettingsMenu.resetState()
         else
             love.event.quit()
         end
