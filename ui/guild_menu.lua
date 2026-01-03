@@ -29,6 +29,13 @@ local selectedHeroDetail = nil  -- Hero being viewed in detail popup
 local equipDropdownSlot = nil  -- Which slot's dropdown is open (weapon/armor/accessory)
 local equipDropdownItems = {}  -- Items available in dropdown
 
+-- Tooltip/hover state
+local mouseX, mouseY = 0, 0
+local hoveredSynergy = nil  -- Synergy currently being hovered
+local hoveredSynergyPos = nil  -- Position for tooltip
+local synergyHelpHovered = false  -- Is the synergy "?" icon hovered
+local hoveredHeroId = nil  -- Hero card being hovered (for status bar)
+
 -- Reset selection state
 function GuildMenu.resetState()
     currentTab = "roster"
@@ -37,6 +44,16 @@ function GuildMenu.resetState()
     selectedHeroDetail = nil
     equipDropdownSlot = nil
     equipDropdownItems = {}
+    hoveredSynergy = nil
+    hoveredSynergyPos = nil
+    synergyHelpHovered = false
+    hoveredHeroId = nil
+end
+
+-- Update mouse position for hover effects (call from main update)
+function GuildMenu.updateMouse(mx, my)
+    mouseX = mx
+    mouseY = my
 end
 
 -- Store module references for use in local functions
@@ -44,13 +61,60 @@ local _Equipment = nil
 local _EquipmentSystem = nil
 local _equipSlotPositions = {}
 local _gameData = nil
+local _Quests = nil  -- For quest stat requirements
+
+-- Helper: Get quest stat requirements for pentagon chart
+local function getQuestStatRequirements(quest, Quests)
+    -- Get expected stat value for this quest rank
+    local expectedStats = Quests and Quests.getConfig("expectedStats") or {D = 5, C = 7, B = 10, A = 13, S = 16}
+    local expectedValue = expectedStats[quest.rank] or 10
+
+    -- Build stat requirements (main stat at expected, others at low baseline)
+    local reqStat = quest.requiredStat or "str"
+    local baselineValue = math.floor(expectedValue * 0.2)  -- Base stats at 20% of main
+
+    local reqs = {
+        str = reqStat == "str" and expectedValue or baselineValue,
+        dex = reqStat == "dex" and expectedValue or baselineValue,
+        int = reqStat == "int" and expectedValue or baselineValue,
+        vit = baselineValue,
+        luck = baselineValue
+    }
+
+    -- Add secondary stat requirements
+    if quest.secondaryStats then
+        for _, secStat in ipairs(quest.secondaryStats) do
+            -- Secondary stats at weighted value of expected
+            local secValue = math.floor(expectedValue * 0.7 * secStat.weight + expectedValue * 0.3)
+            reqs[secStat.stat] = math.max(reqs[secStat.stat], secValue)
+        end
+    end
+
+    return reqs
+end
+
+-- Helper: Get combined party stats for pentagon chart
+local function getPartyStats(partyHeroes, EquipmentSystem)
+    local stats = {str = 0, dex = 0, int = 0, vit = 0, luck = 0}
+
+    for _, hero in ipairs(partyHeroes) do
+        for stat, _ in pairs(stats) do
+            local baseValue = hero.stats[stat] or 0
+            local equipBonus = EquipmentSystem and EquipmentSystem.getStatBonus(hero, stat) or 0
+            stats[stat] = stats[stat] + baseValue + equipBonus
+        end
+    end
+
+    return stats
+end
 
 -- Draw the guild menu
 function GuildMenu.draw(gameData, QuestSystem, Quests, Heroes, TimeSystem, GuildSystem, Equipment, EquipmentSystem)
-    -- Store references for popup
+    -- Store references for popup and helpers
     _Equipment = Equipment
     _EquipmentSystem = EquipmentSystem
     _gameData = gameData
+    _Quests = Quests
     -- Background panel
     Components.drawPanel(MENU.x, MENU.y, MENU.width, MENU.height)
 
@@ -94,6 +158,70 @@ function GuildMenu.draw(gameData, QuestSystem, Quests, Heroes, TimeSystem, Guild
     if selectedHeroDetail then
         drawHeroDetailPopup(selectedHeroDetail, Heroes)
     end
+
+    -- Draw tooltips last (on top of everything)
+    drawTooltips()
+end
+
+-- Draw tooltips for synergies and help icons
+function drawTooltips()
+    -- Synergy help tooltip
+    if synergyHelpHovered then
+        local helpLines = {
+            {text = "SYNERGIES", color = Components.colors.synergy},
+            "",
+            "Party combinations that grant bonuses!",
+            "",
+            {text = "Examples:", color = Components.colors.textDim},
+            "- 2 Knights: +10% survival",
+            "- 2 Mages: +15% INT quests",
+            "- Rogue + Ranger: +25% drops",
+            "- Cleric: Death protection",
+            "",
+            "Hover over active synergies for details."
+        }
+        Components.drawTooltip(helpLines, mouseX + 15, mouseY + 15, {maxWidth = 280})
+    end
+
+    -- Specific synergy tooltip
+    if hoveredSynergy and hoveredSynergyPos then
+        local bonusText = ""
+        if hoveredSynergy.bonus then
+            local bonuses = {}
+            if hoveredSynergy.bonus.deathProtection then
+                table.insert(bonuses, "Prevents death on A/S quests")
+            end
+            if hoveredSynergy.bonus.survivalBonus then
+                table.insert(bonuses, "+" .. math.floor(hoveredSynergy.bonus.survivalBonus * 100) .. "% survival")
+            end
+            if hoveredSynergy.bonus.successBonus then
+                table.insert(bonuses, "+" .. math.floor(hoveredSynergy.bonus.successBonus * 100) .. "% success")
+            end
+            if hoveredSynergy.bonus.dropBonus then
+                table.insert(bonuses, "+" .. math.floor(hoveredSynergy.bonus.dropBonus * 100) .. "% material drops")
+            end
+            if hoveredSynergy.bonus.allBonus then
+                table.insert(bonuses, "+" .. math.floor(hoveredSynergy.bonus.allBonus * 100) .. "% all bonuses")
+            end
+            if hoveredSynergy.bonus.statBonus then
+                for stat, val in pairs(hoveredSynergy.bonus.statBonus) do
+                    table.insert(bonuses, "+" .. math.floor(val * 100) .. "% " .. stat:upper() .. " quests")
+                end
+            end
+            if hoveredSynergy.bonus.travelTimeReduction then
+                table.insert(bonuses, "-" .. math.floor(hoveredSynergy.bonus.travelTimeReduction * 100) .. "% travel time")
+            end
+            bonusText = table.concat(bonuses, ", ")
+        end
+
+        local lines = {
+            {text = hoveredSynergy.name, color = Components.colors.synergy},
+            hoveredSynergy.description or "",
+            "",
+            {text = "Bonus: " .. bonusText, color = Components.colors.success}
+        }
+        Components.drawTooltip(lines, hoveredSynergyPos.x, hoveredSynergyPos.y, {maxWidth = 300})
+    end
 end
 
 -- Draw hero detail popup
@@ -102,8 +230,8 @@ function drawHeroDetailPopup(hero, Heroes)
     love.graphics.setColor(0, 0, 0, 0.5)
     love.graphics.rectangle("fill", 0, 0, 1280, 720)
 
-    -- Popup dimensions (increased height for equipment)
-    local popupW, popupH = 450, 500
+    -- Popup dimensions (increased width for pentagon chart)
+    local popupW, popupH = 580, 520
     local popupX = (1280 - popupW) / 2
     local popupY = (720 - popupH) / 2
 
@@ -128,87 +256,113 @@ function drawHeroDetailPopup(hero, Heroes)
 
     -- Power
     love.graphics.setColor(Components.colors.warning)
-    love.graphics.print("Power: " .. hero.power, popupX + 250, popupY + 50)
+    love.graphics.print("Power: " .. hero.power, popupX + 70, popupY + 88)
 
     -- XP bar
-    local xpPercent = hero.xp / hero.xpToLevel
-    Components.drawProgressBar(popupX + 200, popupY + 72, 150, 16, xpPercent, {
+    local xpPercent = hero.xpToLevel > 0 and (hero.xp / hero.xpToLevel) or 1
+    Components.drawProgressBar(popupX + 150, popupY + 88, 120, 16, xpPercent, {
         fgColor = {0.5, 0.3, 0.7},
         text = hero.xp .. "/" .. hero.xpToLevel .. " XP"
     })
 
-    -- Stats section
-    love.graphics.setColor(Components.colors.text)
-    love.graphics.print("STATS", popupX + 20, popupY + 110)
+    -- Pentagon stat chart (right side)
+    local pentagonX = popupX + popupW - 130
+    local pentagonY = popupY + 150
+    Components.drawPentagonChart(hero.stats, pentagonX, pentagonY, 70, {
+        showLabels = true,
+        fillColor = {0.8, 0.7, 0.2, 0.5},
+        lineColor = {1, 0.9, 0.3, 1}
+    })
 
-    local statY = popupY + 135
+    -- Stats section (left side)
+    love.graphics.setColor(Components.colors.text)
+    love.graphics.print("STATS", popupX + 20, popupY + 115)
+
+    local statY = popupY + 138
     local statData = {
-        {name = "Strength", key = "str", color = {0.8, 0.4, 0.4}},
-        {name = "Dexterity", key = "dex", color = {0.4, 0.8, 0.4}},
-        {name = "Intelligence", key = "int", color = {0.4, 0.4, 0.8}},
-        {name = "Vitality", key = "vit", color = {0.8, 0.6, 0.3}},
-        {name = "Luck", key = "luck", color = {0.7, 0.5, 0.8}}
+        {name = "STR", key = "str", color = {0.8, 0.4, 0.4}},
+        {name = "DEX", key = "dex", color = {0.4, 0.8, 0.4}},
+        {name = "INT", key = "int", color = {0.4, 0.4, 0.8}},
+        {name = "VIT", key = "vit", color = {0.8, 0.6, 0.3}},
+        {name = "LCK", key = "luck", color = {0.7, 0.5, 0.8}}
     }
 
+    -- Get injury penalty
+    local injuryPenalty = 1.0
+    if Heroes and Heroes.getInjuryInfo then
+        local injuryInfo = Heroes.getInjuryInfo(hero)
+        injuryPenalty = injuryInfo.statPenalty or 1.0
+    end
+
     for _, stat in ipairs(statData) do
-        local value = hero.stats[stat.key] or 0
+        local baseValue = hero.stats[stat.key] or 0
+        local effectiveValue = math.floor(baseValue * injuryPenalty)
         local equipBonus = _EquipmentSystem and _EquipmentSystem.getStatBonus(hero, stat.key) or 0
-        local totalValue = value + equipBonus
 
         love.graphics.setColor(stat.color)
         love.graphics.print(stat.name, popupX + 30, statY)
 
-        -- Stat bar (max 20, but show total including equipment)
+        -- Stat bar
         local barW = 150
-        local barH = 14
+        local barH = 12
         love.graphics.setColor(0.2, 0.2, 0.2)
-        love.graphics.rectangle("fill", popupX + 150, statY + 2, barW, barH)
-        -- Base stat portion
+        love.graphics.rectangle("fill", popupX + 70, statY + 2, barW, barH)
+
+        -- Effective stat (with injury)
         love.graphics.setColor(stat.color[1] * 0.7, stat.color[2] * 0.7, stat.color[3] * 0.7)
-        love.graphics.rectangle("fill", popupX + 150, statY + 2, barW * math.min(value / 20, 1), barH)
-        -- Equipment bonus portion (brighter)
+        love.graphics.rectangle("fill", popupX + 70, statY + 2, barW * math.min(effectiveValue / 20, 1), barH)
+
+        -- Equipment bonus
         if equipBonus > 0 then
             love.graphics.setColor(stat.color)
-            love.graphics.rectangle("fill", popupX + 150 + barW * (value / 20), statY + 2,
-                barW * math.min(equipBonus / 20, 1 - value / 20), barH)
+            love.graphics.rectangle("fill", popupX + 70 + barW * (effectiveValue / 20), statY + 2,
+                barW * math.min(equipBonus / 20, 1 - effectiveValue / 20), barH)
         end
 
-        -- Show value with bonus
+        -- Value display
         love.graphics.setColor(Components.colors.text)
-        if equipBonus > 0 then
-            love.graphics.print(value, popupX + 310, statY)
-            love.graphics.setColor(Components.colors.success)
-            love.graphics.print("+" .. equipBonus, popupX + 335, statY)
+        if injuryPenalty < 1 then
+            love.graphics.setColor(Components.colors.injured)
+            love.graphics.print(effectiveValue, popupX + 230, statY)
+            love.graphics.setColor(Components.colors.textDim)
+            love.graphics.print("(" .. baseValue .. ")", popupX + 255, statY)
         else
-            love.graphics.print(value, popupX + 310, statY)
+            love.graphics.print(baseValue, popupX + 230, statY)
+        end
+        if equipBonus > 0 then
+            love.graphics.setColor(Components.colors.success)
+            love.graphics.print("+" .. equipBonus, popupX + 285, statY)
         end
 
-        statY = statY + 28
+        statY = statY + 22
     end
 
     -- Status section
     love.graphics.setColor(Components.colors.text)
-    love.graphics.print("STATUS", popupX + 20, statY + 10)
+    love.graphics.print("STATUS", popupX + 20, statY + 8)
 
-    statY = statY + 35
-    love.graphics.setColor(Components.colors.textDim)
+    statY = statY + 30
 
     -- Current status
-    local statusColors = {
-        idle = Components.colors.success,
-        resting = {0.6, 0.4, 0.7},
-        traveling = Components.colors.warning,
-        questing = Components.colors.warning,
-        returning = {0.6, 0.9, 0.6}
-    }
-    love.graphics.setColor(statusColors[hero.status] or Components.colors.text)
+    local statusColor = Components.getStatusColor(hero.status)
+    love.graphics.setColor(statusColor)
     love.graphics.print("Status: " .. (hero.status or "unknown"):upper(), popupX + 30, statY)
+
+    -- Injury state
+    if Heroes and Heroes.getInjuryInfo then
+        local injuryInfo = Heroes.getInjuryInfo(hero)
+        local injuryColor = Components.getInjuryColor(hero.injuryState)
+        love.graphics.setColor(injuryColor)
+        love.graphics.print("Health: " .. injuryInfo.name, popupX + 180, statY)
+    end
+
+    statY = statY + 18
 
     -- Failure count
     local failures = hero.failureCount or 0
     local failColor = failures >= 2 and Components.colors.danger or Components.colors.textDim
     love.graphics.setColor(failColor)
-    love.graphics.print("Failures: " .. failures .. "/3", popupX + 200, statY)
+    love.graphics.print("Failures: " .. failures .. "/3", popupX + 30, statY)
 
     -- Equipment section
     statY = statY + 30
@@ -362,15 +516,17 @@ function drawRosterTab(gameData, startY, height, Heroes, TimeSystem, GuildSystem
     love.graphics.setColor(Components.colors.text)
     love.graphics.print("Your Heroes (" .. #gameData.heroes .. "/" .. heroSlots .. ")", MENU.x + 20, startY)
 
-    -- Status summary
+    -- Status summary (include injury counts)
     local idleCount = 0
     local busyCount = 0
     local restingCount = 0
+    local injuredCount = 0
     for _, hero in ipairs(gameData.heroes) do
         if hero.status == "idle" then idleCount = idleCount + 1
         elseif hero.status == "resting" then restingCount = restingCount + 1
         else busyCount = busyCount + 1
         end
+        if hero.injuryState then injuredCount = injuredCount + 1 end
     end
 
     love.graphics.setColor(Components.colors.success)
@@ -379,6 +535,10 @@ function drawRosterTab(gameData, startY, height, Heroes, TimeSystem, GuildSystem
     love.graphics.print("Busy: " .. busyCount, MENU.x + 280, startY)
     love.graphics.setColor(0.6, 0.4, 0.7)
     love.graphics.print("Resting: " .. restingCount, MENU.x + 360, startY)
+    if injuredCount > 0 then
+        love.graphics.setColor(Components.colors.injured)
+        love.graphics.print("Injured: " .. injuredCount, MENU.x + 460, startY)
+    end
 
     if #gameData.heroes == 0 then
         love.graphics.setColor(Components.colors.textDim)
@@ -443,6 +603,14 @@ function drawRosterTab(gameData, startY, height, Heroes, TimeSystem, GuildSystem
                 fgColor = Components.colors.warning,
                 text = TimeSystem.formatDuration(timeLeft)
             })
+        end
+
+        -- Injury indicator (shows after status)
+        if hero.injuryState and Heroes and Heroes.getInjuryInfo then
+            local injuryInfo = Heroes.getInjuryInfo(hero)
+            local injuryColor = Components.getInjuryColor(hero.injuryState)
+            love.graphics.setColor(injuryColor)
+            love.graphics.print(injuryInfo.name:upper(), MENU.x + cardWidth - 150, y + 18)
         end
 
         -- XP bar
@@ -530,6 +698,18 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
             love.graphics.setColor(Components.colors.textDim)
             love.graphics.print("+" .. quest.xpReward .. " XP", MENU.x + questListWidth - 70, y + 26)
 
+            -- Mini pentagon showing quest stat requirements
+            local miniPentagonX = MENU.x + questListWidth - 35
+            local miniPentagonY = y + 50
+            local questReqs = getQuestStatRequirements(quest, Quests)
+            local statColor = statColors[reqStat] or {0.6, 0.6, 0.6}
+            Components.drawPentagonChart(questReqs, miniPentagonX, miniPentagonY, 18, {
+                showLabels = false,
+                fillColor = {statColor[1], statColor[2], statColor[3], 0.4},
+                lineColor = {statColor[1], statColor[2], statColor[3], 0.8},
+                maxStat = 20
+            })
+
             y = y + 70
         end
     end
@@ -590,6 +770,62 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
             love.graphics.print(string.format("Party %s: %d", statNames[reqStat] or "STR", totalReqStat), partyX + 150, startY + 34)
         end
 
+        -- Pentagon stat comparison chart (quest requirements vs party stats)
+        local pentagonX = partyX + partyWidth - 85
+        local pentagonY = startY + 100
+        local pentagonRadius = 55
+
+        -- Get quest requirements and party stats
+        local questReqs = getQuestStatRequirements(selectedQuest, Quests)
+        local partyStats = getPartyStats(partyHeroes, _EquipmentSystem)
+
+        -- Scale factor for multi-hero parties (divide by party size to show average comparison)
+        local maxStatForChart = 20
+        if #partyHeroes > 1 then
+            -- For parties, we compare total stats vs scaled requirements
+            -- Scale quest reqs up by party size for fair comparison
+            for stat, val in pairs(questReqs) do
+                questReqs[stat] = val * #partyHeroes
+            end
+            maxStatForChart = 20 * #partyHeroes
+        end
+
+        -- Draw pentagon: quest requirements as outline, party stats as filled
+        if #partyHeroes > 0 then
+            -- Party stats filled (gold), quest requirements as white outline
+            Components.drawPentagonChart(partyStats, pentagonX, pentagonY, pentagonRadius, {
+                showLabels = true,
+                fillColor = {0.3, 0.7, 0.3, 0.5},   -- Green when party has stats
+                lineColor = {0.4, 0.9, 0.4, 1},     -- Bright green outline
+                maxStat = maxStatForChart,
+                overlayStats = questReqs,
+                overlayColor = {1, 1, 1, 0.7}       -- White outline for requirements
+            })
+        else
+            -- No party selected: just show quest requirements
+            Components.drawPentagonChart(questReqs, pentagonX, pentagonY, pentagonRadius, {
+                showLabels = true,
+                fillColor = {0.5, 0.5, 0.5, 0.3},   -- Gray fill
+                lineColor = {0.7, 0.7, 0.7, 0.8},   -- Gray outline
+                maxStat = maxStatForChart
+            })
+        end
+
+        -- Chart legend
+        love.graphics.setColor(Components.colors.textDim)
+        love.graphics.print("Stat Match", pentagonX - 25, pentagonY + pentagonRadius + 10)
+        if #partyHeroes > 0 then
+            love.graphics.setColor(0.3, 0.7, 0.3)
+            love.graphics.rectangle("fill", pentagonX - 40, pentagonY + pentagonRadius + 28, 10, 10)
+            love.graphics.setColor(Components.colors.textDim)
+            love.graphics.print("Party", pentagonX - 25, pentagonY + pentagonRadius + 26)
+
+            love.graphics.setColor(1, 1, 1, 0.7)
+            love.graphics.rectangle("line", pentagonX + 20, pentagonY + pentagonRadius + 28, 10, 10)
+            love.graphics.setColor(Components.colors.textDim)
+            love.graphics.print("Quest", pentagonX + 35, pentagonY + pentagonRadius + 26)
+        end
+
         -- Success chance (color coded, includes equipment bonuses)
         local successY = startY + 52
         if #partyHeroes > 0 then
@@ -613,17 +849,31 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
             love.graphics.print("Select heroes to see success chance", partyX, successY)
         end
 
-        -- Active synergies display
+        -- Active synergies display with hover tooltips
         local synergyY = successY + 18
+        hoveredSynergy = nil  -- Reset hover state each frame
+        synergyHelpHovered = false
+
+        -- Store synergy positions for hover detection
+        local synergyPositions = {}
+
         if #partyHeroes > 0 then
             local synergyBonuses = Quests.getSynergyBonuses(partyHeroes, selectedQuest)
             local activeSynergies = synergyBonuses.activeSynergies or {}
 
-            if #activeSynergies > 0 then
-                love.graphics.setColor(0.6, 0.5, 0.8)  -- Purple for synergies
-                love.graphics.print("Synergies:", partyX, synergyY)
+            -- Draw synergy label with help icon
+            love.graphics.setColor(Components.colors.synergy)
+            love.graphics.print("Synergies:", partyX, synergyY)
 
-                local synX = partyX + 70
+            -- Help icon (?)
+            local helpX = partyX + 60
+            Components.drawHelpIcon(helpX, synergyY - 2, 16)
+            if Components.isPointInRect(mouseX, mouseY, helpX, synergyY - 2, 16, 16) then
+                synergyHelpHovered = true
+            end
+
+            if #activeSynergies > 0 then
+                local synX = partyX + 85
                 local maxDisplay = 3
                 for i, synergy in ipairs(activeSynergies) do
                     if i > maxDisplay then
@@ -631,12 +881,35 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
                         love.graphics.print("+" .. (#activeSynergies - maxDisplay) .. " more", synX, synergyY)
                         break
                     end
-                    -- Synergy name with bonus indicator
-                    love.graphics.setColor(0.7, 0.6, 0.9)
+
+                    -- Synergy name with hover effect
+                    local font = love.graphics.getFont()
+                    local nameWidth = font:getWidth(synergy.name)
+                    local isHovered = Components.isPointInRect(mouseX, mouseY, synX, synergyY, nameWidth, 16)
+
+                    if isHovered then
+                        love.graphics.setColor(1, 1, 1)  -- Bright white on hover
+                        hoveredSynergy = synergy
+                        hoveredSynergyPos = {x = synX, y = synergyY + 20}
+                    else
+                        love.graphics.setColor(Components.colors.synergyLight)
+                    end
                     love.graphics.print(synergy.name, synX, synergyY)
-                    synX = synX + love.graphics.getFont():getWidth(synergy.name) + 8
+
+                    -- Store position for click detection if needed
+                    table.insert(synergyPositions, {
+                        synergy = synergy,
+                        x = synX, y = synergyY,
+                        width = nameWidth, height = 16
+                    })
+
+                    synX = synX + nameWidth + 10
                 end
-                synergyY = synergyY + 16
+                synergyY = synergyY + 18
+            else
+                love.graphics.setColor(Components.colors.textDim)
+                love.graphics.print("(none active)", partyX + 85, synergyY)
+                synergyY = synergyY + 18
             end
         end
 
@@ -907,7 +1180,7 @@ end
 function GuildMenu.handleClick(x, y, gameData, QuestSystem, Quests, Heroes, GuildSystem)
     -- Hero detail popup handling (takes priority)
     if selectedHeroDetail then
-        local popupW, popupH = 450, 500
+        local popupW, popupH = 580, 520
         local popupX = (1280 - popupW) / 2
         local popupY = (720 - popupH) / 2
 

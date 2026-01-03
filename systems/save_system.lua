@@ -1,0 +1,279 @@
+-- Save System Module
+-- Handles saving and loading game state
+
+local json = require("utils.json")
+
+local SaveSystem = {}
+
+-- Save file configuration
+SaveSystem.SAVE_SLOTS = 3
+SaveSystem.SAVE_PREFIX = "save_slot_"
+SaveSystem.SAVE_EXT = ".json"
+
+-- Get save file path for a slot
+function SaveSystem.getSavePath(slot)
+    return SaveSystem.SAVE_PREFIX .. slot .. SaveSystem.SAVE_EXT
+end
+
+-- Check if a save slot exists
+function SaveSystem.saveExists(slot)
+    local path = SaveSystem.getSavePath(slot)
+    return love.filesystem.getInfo(path) ~= nil
+end
+
+-- Get save slot info (for display in menu)
+function SaveSystem.getSaveInfo(slot)
+    if not SaveSystem.saveExists(slot) then
+        return nil
+    end
+
+    local path = SaveSystem.getSavePath(slot)
+    local info = love.filesystem.getInfo(path)
+
+    -- Load save to get metadata
+    local data, err = json.loadFile(path)
+    if not data then
+        return {
+            slot = slot,
+            exists = true,
+            corrupted = true,
+            error = err
+        }
+    end
+
+    return {
+        slot = slot,
+        exists = true,
+        corrupted = false,
+        day = data.day or 1,
+        gold = data.gold or 0,
+        heroCount = data.heroes and #data.heroes or 0,
+        guildLevel = data.guild and data.guild.level or 1,
+        timestamp = info.modtime,
+        totalTime = data.totalTime or 0
+    }
+end
+
+-- Get all save slot info
+function SaveSystem.getAllSaveInfo()
+    local saves = {}
+    for slot = 1, SaveSystem.SAVE_SLOTS do
+        saves[slot] = SaveSystem.getSaveInfo(slot)
+    end
+    return saves
+end
+
+-- Prepare game data for saving (remove non-serializable data)
+local function prepareDataForSave(gameData)
+    local saveData = {
+        -- Core progress
+        day = gameData.day,
+        dayProgress = gameData.dayProgress,
+        totalTime = gameData.totalTime,
+        gold = gameData.gold,
+
+        -- Guild data
+        guild = gameData.guild,
+
+        -- Inventory
+        inventory = gameData.inventory,
+
+        -- Graveyard
+        graveyard = {},
+
+        -- Heroes (serialized)
+        heroes = {}
+    }
+
+    -- Serialize heroes (only save persistent data)
+    for _, hero in ipairs(gameData.heroes) do
+        local savedHero = {
+            id = hero.id,
+            name = hero.name,
+            race = hero.race,
+            class = hero.class,
+            rank = hero.rank,
+            level = hero.level,
+            xp = hero.xp,
+            xpToLevel = hero.xpToLevel,
+            stats = hero.stats,
+            status = "idle",  -- Reset to idle on load
+            power = hero.power,
+            hireCost = hero.hireCost,
+            isAwakened = hero.isAwakened,
+            failureCount = hero.failureCount or 0,
+            injuryState = hero.injuryState,
+            equipment = hero.equipment,
+            -- Quest-related fields reset on load
+            currentQuestId = nil,
+            questPhase = nil,
+            questProgress = 0,
+            questPhaseMax = 0,
+            restProgress = 0,
+            restTimeMax = 0,
+            restSpeedBonus = 1
+        }
+        table.insert(saveData.heroes, savedHero)
+    end
+
+    -- Serialize graveyard
+    for _, hero in ipairs(gameData.graveyard) do
+        table.insert(saveData.graveyard, {
+            id = hero.id,
+            name = hero.name,
+            race = hero.race,
+            class = hero.class,
+            rank = hero.rank,
+            level = hero.level,
+            deathQuest = hero.deathQuest,
+            deathDay = hero.deathDay
+        })
+    end
+
+    -- Save version for future compatibility
+    saveData._version = 1
+    saveData._savedAt = os.time()
+
+    return saveData
+end
+
+-- Save game to a slot
+function SaveSystem.save(gameData, slot)
+    if slot < 1 or slot > SaveSystem.SAVE_SLOTS then
+        return false, "Invalid save slot"
+    end
+
+    local path = SaveSystem.getSavePath(slot)
+    local saveData = prepareDataForSave(gameData)
+
+    local success, err = json.saveFile(path, saveData, true)  -- Pretty print for debugging
+    if not success then
+        return false, "Failed to save: " .. (err or "unknown error")
+    end
+
+    return true, "Game saved to slot " .. slot
+end
+
+-- Load game from a slot
+function SaveSystem.load(slot)
+    if slot < 1 or slot > SaveSystem.SAVE_SLOTS then
+        return nil, "Invalid save slot"
+    end
+
+    if not SaveSystem.saveExists(slot) then
+        return nil, "No save in slot " .. slot
+    end
+
+    local path = SaveSystem.getSavePath(slot)
+    local data, err = json.loadFile(path)
+
+    if not data then
+        return nil, "Failed to load save: " .. (err or "unknown error")
+    end
+
+    return data, nil
+end
+
+-- Apply loaded data to game state
+function SaveSystem.applyLoadedData(gameData, loadedData, Heroes, Quests, GuildSystem, TimeSystem)
+    -- Core progress
+    gameData.day = loadedData.day or 1
+    gameData.dayProgress = loadedData.dayProgress or 0
+    gameData.totalTime = loadedData.totalTime or 0
+    gameData.gold = loadedData.gold or 200
+
+    -- Guild data
+    if loadedData.guild then
+        gameData.guild = loadedData.guild
+    end
+
+    -- Inventory
+    if loadedData.inventory then
+        gameData.inventory = loadedData.inventory
+    end
+
+    -- Heroes
+    gameData.heroes = {}
+    if loadedData.heroes then
+        for _, heroData in ipairs(loadedData.heroes) do
+            -- Restore hero with all saved fields
+            local hero = {
+                id = heroData.id,
+                name = heroData.name,
+                race = heroData.race,
+                class = heroData.class,
+                rank = heroData.rank,
+                level = heroData.level,
+                xp = heroData.xp,
+                xpToLevel = heroData.xpToLevel,
+                stats = heroData.stats,
+                status = "idle",
+                power = heroData.power or Heroes.calculatePower(heroData.rank, heroData.level),
+                hireCost = heroData.hireCost,
+                isAwakened = heroData.isAwakened,
+                failureCount = heroData.failureCount or 0,
+                injuryState = heroData.injuryState,
+                equipment = heroData.equipment or {weapon = nil, armor = nil, accessory = nil},
+                currentQuestId = nil,
+                questPhase = nil,
+                questProgress = 0,
+                questPhaseMax = 0,
+                restProgress = 0,
+                restTimeMax = 0,
+                restSpeedBonus = 1
+            }
+            table.insert(gameData.heroes, hero)
+        end
+    end
+
+    -- Graveyard
+    gameData.graveyard = loadedData.graveyard or {}
+
+    -- Clear active quests (they don't persist)
+    gameData.activeQuests = {}
+
+    -- Regenerate available quests and tavern pool
+    local maxRank = GuildSystem and GuildSystem.getMaxTavernRank(gameData) or "B"
+    local isNight = TimeSystem and TimeSystem.isNight(gameData) or false
+
+    gameData.availableQuests = Quests.generatePool(3, maxRank, isNight)
+    gameData.tavernPool = Heroes.generateTavernPool(4, maxRank, gameData.guild and gameData.guild.level or 1)
+
+    return true
+end
+
+-- Delete a save slot
+function SaveSystem.deleteSave(slot)
+    if slot < 1 or slot > SaveSystem.SAVE_SLOTS then
+        return false, "Invalid save slot"
+    end
+
+    if not SaveSystem.saveExists(slot) then
+        return false, "No save in slot " .. slot
+    end
+
+    local path = SaveSystem.getSavePath(slot)
+    local success = love.filesystem.remove(path)
+
+    if success then
+        return true, "Save deleted"
+    else
+        return false, "Failed to delete save"
+    end
+end
+
+-- Format timestamp for display
+function SaveSystem.formatTimestamp(timestamp)
+    if not timestamp then return "Unknown" end
+    return os.date("%Y-%m-%d %H:%M", timestamp)
+end
+
+-- Format play time for display
+function SaveSystem.formatPlayTime(totalTime)
+    if not totalTime then return "0:00" end
+    local hours = math.floor(totalTime / 3600)
+    local minutes = math.floor((totalTime % 3600) / 60)
+    return string.format("%d:%02d", hours, minutes)
+end
+
+return SaveSystem

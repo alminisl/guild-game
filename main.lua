@@ -20,6 +20,9 @@ local TavernMenu = require("ui.tavern_menu")
 local GuildMenu = require("ui.guild_menu")
 local ArmoryMenu = require("ui.armory_menu")
 local PotionMenu = require("ui.potion_menu")
+local QuestResultModal = require("ui.quest_result_modal")
+local SaveMenu = require("ui.save_menu")
+local SaveSystem = require("systems.save_system")
 
 -- Game States
 local STATE = {
@@ -27,7 +30,8 @@ local STATE = {
     TAVERN = "tavern",
     GUILD = "guild",
     ARMORY = "armory",
-    POTION = "potion"
+    POTION = "potion",
+    SAVE_MENU = "save_menu"
 }
 
 -- Game data (central state)
@@ -109,6 +113,9 @@ function love.update(dt)
     -- Update mouse position
     mouseX, mouseY = love.mouse.getPosition()
 
+    -- Update guild menu mouse position for tooltips
+    GuildMenu.updateMouse(mouseX, mouseY)
+
     -- Update time system
     local newDay = TimeSystem.update(gameData, dt)
     if newDay then
@@ -139,24 +146,44 @@ function love.update(dt)
     local questResults = QuestSystem.update(gameData, dt, Heroes, Quests, Economy, GuildSystem, Materials, EquipmentSystem)
     for _, result in ipairs(questResults) do
         if result.quest then
-            -- Quest completed
-            local msgType = result.success and "success" or "warning"
-            addNotification(result.quest.name .. ": " .. result.message, msgType)
-
-            -- Material drops notification
-            if result.materialDrops and result.success then
-                local dropCount = Materials.getTotalDropCount(result.materialDrops)
-                if dropCount > 0 then
-                    addNotification("Found " .. dropCount .. " materials!", "info")
+            -- Quest completed - show modal with detailed results
+            -- Build hero list from quest
+            local heroList = {}
+            for _, heroId in ipairs(result.quest.assignedHeroes or {}) do
+                for _, hero in ipairs(gameData.heroes) do
+                    if hero.id == heroId then
+                        table.insert(heroList, hero)
+                        break
+                    end
                 end
             end
 
-            -- Guild level up notification
-            if result.guildLevelUp then
-                addNotification("Guild leveled up to " .. result.guildLevelUp .. "!", "success")
+            -- Also check graveyard for fallen heroes
+            for _, hero in ipairs(gameData.graveyard) do
+                for _, heroId in ipairs(result.quest.assignedHeroes or {}) do
+                    if hero.id == heroId then
+                        table.insert(heroList, hero)
+                        break
+                    end
+                end
             end
 
-            -- Faction tier change notification
+            -- Build and push modal result
+            local modalResult = QuestResultModal.buildResult(
+                result.quest,
+                result,
+                heroList,
+                result.materialDrops,
+                {guildXP = result.guildXP, guildLevelUp = result.guildLevelUp},
+                Heroes
+            )
+            QuestResultModal.push(modalResult)
+
+            -- Still show toast for quick info
+            local msgType = result.success and "success" or "warning"
+            addNotification(result.quest.name .. ": " .. (result.success and "Complete!" or "Failed!"), msgType)
+
+            -- Faction tier change notification (keep as toast since it's separate info)
             if result.tierChanged then
                 local factionName = GuildSystem.factions[result.tierChanged.faction].name
                 addNotification("Now " .. result.tierChanged.tier.name .. " with " .. factionName, "info")
@@ -218,6 +245,14 @@ function love.draw()
     elseif currentState == STATE.POTION then
         Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
         PotionMenu.draw(gameData, Items, Heroes, Economy)
+    elseif currentState == STATE.SAVE_MENU then
+        Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
+        SaveMenu.draw(gameData)
+    end
+
+    -- Draw quest result modal (on top of everything except notifications)
+    if QuestResultModal.isOpen() then
+        QuestResultModal.draw(Heroes)
     end
 
     -- Draw notifications
@@ -271,6 +306,12 @@ end
 function love.mousepressed(x, y, button)
     if button ~= 1 then return end
 
+    -- Quest result modal takes priority
+    if QuestResultModal.isOpen() then
+        QuestResultModal.handleClick(x, y)
+        return
+    end
+
     if currentState == STATE.TOWN then
         -- Check building clicks
         local buildingId = Town.getBuildingAt(x, y)
@@ -282,6 +323,8 @@ function love.mousepressed(x, y, button)
             currentState = STATE.ARMORY
         elseif buildingId == "potion" then
             currentState = STATE.POTION
+        elseif buildingId == "save" then
+            currentState = STATE.SAVE_MENU
         end
 
     elseif currentState == STATE.TAVERN then
@@ -330,20 +373,60 @@ function love.mousepressed(x, y, button)
         elseif result == "error" then
             addNotification(message, "error")
         end
+
+    elseif currentState == STATE.SAVE_MENU then
+        local result, message = SaveMenu.handleClick(x, y, gameData, Heroes, Quests, GuildSystem, TimeSystem)
+        if result == "close" then
+            currentState = STATE.TOWN
+            SaveMenu.resetState()
+        elseif result == "saved" then
+            addNotification(message, "success")
+        elseif result == "loaded" then
+            addNotification(message, "success")
+        elseif result == "deleted" then
+            addNotification(message, "info")
+        elseif result == "error" then
+            addNotification(message, "error")
+        end
     end
 end
 
 -- Handle key press
 function love.keypressed(key)
+    -- Don't handle keys if modal is open
+    if QuestResultModal.isOpen() then
+        return
+    end
+
     if key == "escape" then
         if currentState ~= STATE.TOWN then
             currentState = STATE.TOWN
             GuildMenu.resetState()
             PotionMenu.resetState()
             ArmoryMenu.resetState()
+            SaveMenu.resetState()
         else
             love.event.quit()
         end
+
+    -- F5: Quick save to slot 1
+    elseif key == "f5" then
+        local success, msg = SaveMenu.quickSave(gameData)
+        if success then
+            addNotification("Game saved!", "success")
+        else
+            addNotification("Save failed: " .. msg, "error")
+        end
+
+    -- F9: Quick load from slot 1
+    elseif key == "f9" then
+        local success, msg = SaveMenu.quickLoad(gameData, Heroes, Quests, GuildSystem, TimeSystem)
+        if success then
+            addNotification("Game loaded!", "success")
+        else
+            addNotification("Load failed: " .. msg, "error")
+        end
+
     -- Debug: Speed up time
     elseif key == "=" or key == "+" then
         local currentScale = TimeSystem.config.timeScale

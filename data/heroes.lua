@@ -166,6 +166,43 @@ end
 -- Max level cap
 Heroes.MAX_LEVEL = 10
 
+-- Injury system configuration
+Heroes.injuryConfig = {
+    -- Injury states and their effects
+    states = {
+        fatigued = {
+            name = "Fatigued",
+            statPenalty = 0.90,       -- 10% stat reduction
+            restMultiplier = 1.0,     -- Normal rest time
+            canQuest = true,          -- Can still go on quests
+            color = {0.7, 0.7, 0.3},
+            description = "Tired from recent quest. -10% stats."
+        },
+        injured = {
+            name = "Injured",
+            statPenalty = 0.75,       -- 25% stat reduction
+            restMultiplier = 2.0,     -- 2x rest time
+            canQuest = true,          -- Can quest but risky
+            color = {0.8, 0.5, 0.2},
+            description = "Wounded in battle. -25% stats, 2x rest time."
+        },
+        wounded = {
+            name = "Wounded",
+            statPenalty = 0.50,       -- 50% stat reduction
+            restMultiplier = 3.0,     -- 3x rest time
+            canQuest = false,         -- Cannot quest until healed
+            color = {0.7, 0.2, 0.2},
+            description = "Severely wounded. Cannot quest. -50% stats, 3x rest time."
+        }
+    },
+    -- Which injury state results from quest outcomes by rank
+    questOutcomes = {
+        success = "fatigued",         -- All successes cause fatigue
+        failureLow = "injured",       -- D/C/B rank failures
+        failureHigh = "wounded"       -- A/S rank failures (with protection)
+    }
+}
+
 -- Internal ID counter
 local nextHeroId = 1
 
@@ -337,6 +374,7 @@ function Heroes.generate(options)
         restTimeMax = 0,
         restSpeedBonus = 1,
         failureCount = 0,
+        injuryState = nil,  -- nil = healthy, or "fatigued", "injured", "wounded"
         equipment = {
             weapon = nil,
             armor = nil,
@@ -468,9 +506,12 @@ function Heroes.startResting(hero, questRank, failed)
     local baseRest = data.config.baseRestTime[hero.rank] or 15
     local questMultiplier = (data.config.rankPower[questRank] or 1) * 0.5 + 0.5
     local vitBonus = 1 - (hero.stats.vit - 10) * 0.02
-    local failureMultiplier = failed and 2 or 1
 
-    hero.restTimeMax = baseRest * questMultiplier * math.max(0.5, vitBonus) * failureMultiplier
+    -- Get injury rest multiplier
+    local injuryInfo = Heroes.getInjuryInfo(hero)
+    local injuryMultiplier = injuryInfo.restMultiplier or 1.0
+
+    hero.restTimeMax = baseRest * questMultiplier * math.max(0.5, vitBonus) * injuryMultiplier
     hero.restProgress = 0
     hero.status = "resting"
 end
@@ -497,6 +538,10 @@ function Heroes.updateRest(hero, dt)
         hero.restProgress = 0
         hero.restTimeMax = 0
         hero.restSpeedBonus = 1
+
+        -- Heal one level of injury when rest completes
+        Heroes.healInjury(hero)
+
         return true
     end
     return false
@@ -526,6 +571,119 @@ end
 -- Check if hero is available
 function Heroes.isAvailable(hero)
     return hero.status == "idle"
+end
+
+-- ============================================
+-- INJURY SYSTEM FUNCTIONS
+-- ============================================
+
+-- Apply an injury state to a hero
+function Heroes.applyInjury(hero, injuryState)
+    if not injuryState then return end
+
+    local config = Heroes.injuryConfig.states[injuryState]
+    if not config then return end
+
+    -- Don't downgrade injuries (wounded > injured > fatigued)
+    local severity = {fatigued = 1, injured = 2, wounded = 3}
+    local currentSeverity = hero.injuryState and severity[hero.injuryState] or 0
+    local newSeverity = severity[injuryState] or 0
+
+    if newSeverity > currentSeverity then
+        hero.injuryState = injuryState
+    end
+end
+
+-- Get injury state info
+function Heroes.getInjuryInfo(hero)
+    if not hero.injuryState then
+        return {
+            name = "Healthy",
+            statPenalty = 1.0,
+            restMultiplier = 1.0,
+            canQuest = true,
+            color = {0.3, 0.7, 0.3},
+            description = "In good condition."
+        }
+    end
+    return Heroes.injuryConfig.states[hero.injuryState] or Heroes.injuryConfig.states.fatigued
+end
+
+-- Check if hero can go on quests (not wounded)
+function Heroes.canQuest(hero)
+    if hero.status ~= "idle" then return false end
+    local info = Heroes.getInjuryInfo(hero)
+    return info.canQuest
+end
+
+-- Get effective stats (base stats with injury penalty applied)
+function Heroes.getEffectiveStats(hero)
+    local info = Heroes.getInjuryInfo(hero)
+    local penalty = info.statPenalty
+
+    return {
+        str = math.floor(hero.stats.str * penalty),
+        dex = math.floor(hero.stats.dex * penalty),
+        int = math.floor(hero.stats.int * penalty),
+        vit = math.floor(hero.stats.vit * penalty),
+        luck = math.floor(hero.stats.luck * penalty)
+    }
+end
+
+-- Get a single effective stat value
+function Heroes.getEffectiveStat(hero, stat)
+    local info = Heroes.getInjuryInfo(hero)
+    local baseValue = hero.stats[stat] or 0
+    return math.floor(baseValue * info.statPenalty)
+end
+
+-- Clear injury state (hero is healed)
+function Heroes.clearInjury(hero)
+    hero.injuryState = nil
+end
+
+-- Heal one level of injury (wounded -> injured -> fatigued -> healthy)
+function Heroes.healInjury(hero)
+    if hero.injuryState == "wounded" then
+        hero.injuryState = "injured"
+    elseif hero.injuryState == "injured" then
+        hero.injuryState = "fatigued"
+    elseif hero.injuryState == "fatigued" then
+        hero.injuryState = nil
+    end
+end
+
+-- Check if hero has any injury
+function Heroes.hasInjury(hero)
+    return hero.injuryState ~= nil
+end
+
+-- Get injury severity (0 = healthy, 1 = fatigued, 2 = injured, 3 = wounded)
+function Heroes.getInjurySeverity(hero)
+    local severity = {fatigued = 1, injured = 2, wounded = 3}
+    return hero.injuryState and severity[hero.injuryState] or 0
+end
+
+-- Determine injury from quest outcome
+function Heroes.determineInjury(questRank, success, hasClericProtection)
+    if success then
+        -- Successful quests cause fatigue
+        return "fatigued"
+    else
+        -- Failed quests cause injuries based on rank
+        local highRanks = {A = true, S = true}
+        if highRanks[questRank] then
+            -- High rank failures cause wounds (or death without protection)
+            if hasClericProtection then
+                return "wounded"
+            else
+                return nil  -- Death handled elsewhere
+            end
+        else
+            -- Low rank failures cause injuries
+            return "injured"
+        end
+    end
 end
 
 -- Check if class provides death protection (Cleric/Saint)

@@ -13,3 +13,20 @@
   8. Sound & Music - Audio feedback and atmosphere
   9. Tutorial/Tooltips - Help new players understand systems
   10. Quest Auto-Assignment - Let the game pick optimal parties
+
+
+  - secondary stats
+
+  - Movement speed 
+  - Recovery speed 
+  - luck - better loot 
+  - exploring - speed stat? 
+    - Mount better exploraion speed 
+
+
+    1 faction to look out 
+
+Guild Leader
+- Custom character 
+
+https://zerie.itch.io/tiny-rpg-character-asset-packhi

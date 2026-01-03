@@ -154,27 +154,40 @@ function QuestSystem.update(gameData, dt, Heroes, Quests, Economy, GuildSystem, 
                         end
                     end
 
-                    -- Start resting (longer if failed, even longer if revived)
+                    -- Clear quest state
                     hero.currentQuestId = nil
                     hero.questPhase = nil
                     hero.questProgress = 0
 
                     if not shouldDie then
-                        -- Revived heroes need extra long rest
+                        -- Check if party has cleric protection
+                        local hasClericProtection = false
+                        for _, h in ipairs(heroList) do
+                            if Heroes.providesDeathProtection(h) then
+                                hasClericProtection = true
+                                break
+                            end
+                        end
+
+                        -- Determine and apply injury based on quest outcome
                         local wasRevived = false
                         for _, revived in ipairs(revivedHeroes) do
                             if revived.id == hero.id then wasRevived = true break end
                         end
 
                         if wasRevived then
-                            -- Very long rest after revival (3x normal)
-                            Heroes.startResting(hero, quest.rank, true)
-                            hero.restTimeMax = hero.restTimeMax * 3
-                        elseif not result.success then
-                            Heroes.startResting(hero, quest.rank, true)
+                            -- Revived heroes are severely wounded
+                            Heroes.applyInjury(hero, "wounded")
                         else
-                            Heroes.startResting(hero, quest.rank, false)
+                            -- Determine injury from quest outcome
+                            local injuryState = Heroes.determineInjury(quest.rank, result.success, hasClericProtection)
+                            if injuryState then
+                                Heroes.applyInjury(hero, injuryState)
+                            end
                         end
+
+                        -- Start resting (injury multiplier is applied inside startResting)
+                        Heroes.startResting(hero, quest.rank, not result.success)
                     end
                 end
 

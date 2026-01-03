@@ -50,6 +50,17 @@ Town.buildings = {
         color = {0.4, 0.3, 0.5},
         roofColor = {0.3, 0.2, 0.4},
         description = "Rest & potions"
+    },
+    {
+        id = "save",
+        name = "Archives",
+        x = 580,
+        y = 380,
+        width = 90,
+        height = 70,
+        color = {0.45, 0.4, 0.35},
+        roofColor = {0.35, 0.3, 0.25},
+        description = "Save & Load (F5/F9)"
     }
 }
 

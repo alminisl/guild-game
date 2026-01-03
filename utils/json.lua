@@ -186,4 +186,110 @@ function json.loadFile(filepath)
     return json.decode(contents)
 end
 
+-- Encode Lua table to JSON string
+function json.encode(value, indent, currentIndent)
+    indent = indent or nil  -- nil = compact, number = pretty with that many spaces
+    currentIndent = currentIndent or 0
+
+    local function encodeString(s)
+        s = s:gsub('\\', '\\\\')
+        s = s:gsub('"', '\\"')
+        s = s:gsub('\n', '\\n')
+        s = s:gsub('\r', '\\r')
+        s = s:gsub('\t', '\\t')
+        return '"' .. s .. '"'
+    end
+
+    local function isArray(t)
+        if type(t) ~= "table" then return false end
+        local count = 0
+        for k, _ in pairs(t) do
+            if type(k) ~= "number" or k <= 0 or math.floor(k) ~= k then
+                return false
+            end
+            count = count + 1
+        end
+        -- Check for sequential keys starting at 1
+        for i = 1, count do
+            if t[i] == nil then return false end
+        end
+        return true
+    end
+
+    local function sortedKeys(t)
+        local keys = {}
+        for k in pairs(t) do
+            table.insert(keys, k)
+        end
+        table.sort(keys, function(a, b)
+            return tostring(a) < tostring(b)
+        end)
+        return keys
+    end
+
+    local newline = indent and "\n" or ""
+    local space = indent and " " or ""
+    local nextIndent = indent and (currentIndent + indent) or 0
+    local indentStr = indent and string.rep(" ", currentIndent) or ""
+    local nextIndentStr = indent and string.rep(" ", nextIndent) or ""
+
+    if value == nil then
+        return "null"
+    elseif type(value) == "boolean" then
+        return value and "true" or "false"
+    elseif type(value) == "number" then
+        if value ~= value then  -- NaN check
+            return "null"
+        elseif value == math.huge or value == -math.huge then
+            return "null"
+        elseif math.floor(value) == value then
+            return string.format("%d", value)
+        else
+            return string.format("%.10g", value)
+        end
+    elseif type(value) == "string" then
+        return encodeString(value)
+    elseif type(value) == "table" then
+        if isArray(value) then
+            if #value == 0 then
+                return "[]"
+            end
+            local parts = {}
+            for i, v in ipairs(value) do
+                table.insert(parts, nextIndentStr .. json.encode(v, indent, nextIndent))
+            end
+            return "[" .. newline .. table.concat(parts, "," .. newline) .. newline .. indentStr .. "]"
+        else
+            local keys = sortedKeys(value)
+            if #keys == 0 then
+                return "{}"
+            end
+            local parts = {}
+            for _, k in ipairs(keys) do
+                local v = value[k]
+                -- Skip functions and other non-serializable types
+                if type(v) ~= "function" and type(v) ~= "userdata" and type(v) ~= "thread" then
+                    local encodedKey = encodeString(tostring(k))
+                    local encodedValue = json.encode(v, indent, nextIndent)
+                    table.insert(parts, nextIndentStr .. encodedKey .. ":" .. space .. encodedValue)
+                end
+            end
+            return "{" .. newline .. table.concat(parts, "," .. newline) .. newline .. indentStr .. "}"
+        end
+    else
+        return "null"  -- Fallback for unsupported types
+    end
+end
+
+-- Save table to JSON file
+function json.saveFile(filepath, data, prettyPrint)
+    local indent = prettyPrint and 2 or nil
+    local jsonStr = json.encode(data, indent)
+    local success, err = love.filesystem.write(filepath, jsonStr)
+    if not success then
+        return false, "Could not write file: " .. (err or filepath)
+    end
+    return true
+end
+
 return json

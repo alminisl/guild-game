@@ -113,6 +113,64 @@ end
 -- Internal ID counter
 local nextQuestId = 1
 
+-- Stat combinations for secondary requirements based on quest type
+local statSynergies = {
+    -- Combat tends to pair with VIT (endurance) or DEX (dodging)
+    str = {"vit", "dex"},
+    -- Agility pairs with LUCK (finding paths) or INT (planning)
+    dex = {"luck", "int"},
+    -- Magic pairs with VIT (channeling) or LUCK (spell success)
+    int = {"vit", "luck"}
+}
+
+-- Generate secondary stats for higher rank quests
+local function generateSecondaryStats(primaryStat, rank, combat)
+    local secondaryStats = {}
+
+    -- D rank: No secondary stats
+    if rank == "D" then
+        return secondaryStats
+    end
+
+    -- Chance of secondary stat based on rank
+    local secondaryChance = {
+        C = 0.4,   -- 40% chance of 1 secondary
+        B = 0.7,   -- 70% chance of 1 secondary
+        A = 1.0,   -- Always 1 secondary, 30% chance of 2nd
+        S = 1.0    -- Always 1 secondary, 60% chance of 2nd
+    }
+
+    local chance = secondaryChance[rank] or 0
+    if math.random() > chance then
+        return secondaryStats
+    end
+
+    -- Pick secondary stat based on primary
+    local possibleSecondary = statSynergies[primaryStat] or {"vit", "luck"}
+
+    -- For combat quests, VIT is more likely
+    local secondary1
+    if combat and math.random() < 0.6 then
+        secondary1 = "vit"
+    else
+        secondary1 = possibleSecondary[math.random(#possibleSecondary)]
+    end
+
+    -- Weight: Secondary stat contributes less than primary
+    local weight1 = rank == "S" and 0.5 or (rank == "A" and 0.4 or 0.3)
+    table.insert(secondaryStats, {stat = secondary1, weight = weight1})
+
+    -- A/S rank might have a third stat
+    local thirdChance = rank == "S" and 0.6 or (rank == "A" and 0.3 or 0)
+    if thirdChance > 0 and math.random() < thirdChance then
+        -- Pick a third stat (VIT or LUCK for survivability)
+        local tertiary = secondary1 ~= "vit" and "vit" or "luck"
+        table.insert(secondaryStats, {stat = tertiary, weight = 0.2})
+    end
+
+    return secondaryStats
+end
+
 -- Generate a quest from template
 function Quests.generate(rank, template)
     local templates = Quests.getTemplates()
@@ -125,6 +183,9 @@ function Quests.generate(rank, template)
     local timers = Quests.getTimers(rank)
     local deathRisk = Quests.getDeathRisk(rank)
 
+    -- Generate secondary stat requirements for C+ rank quests
+    local secondaryStats = generateSecondaryStats(template.requiredStat, rank, template.combat)
+
     local quest = {
         id = nextQuestId,
         name = template.name,
@@ -135,6 +196,7 @@ function Quests.generate(rank, template)
         xpReward = template.xpReward,
         requiredPower = Quests.getRankPower(rank),
         requiredStat = template.requiredStat,
+        secondaryStats = secondaryStats,  -- NEW: Secondary stat requirements
         materialBonus = template.materialBonus or false,
         combat = template.combat or false,
         timeOfDay = template.timeOfDay or "any",
@@ -287,6 +349,13 @@ function Quests.rollRewards(quest, luckMultiplier)
 end
 
 -- Calculate success chance
+-- Injury stat penalty multipliers (avoid circular dependency with Heroes module)
+local injuryPenalties = {
+    fatigued = 0.90,
+    injured = 0.75,
+    wounded = 0.50
+}
+
 function Quests.calculateSuccessChance(quest, heroes, EquipmentSystem)
     if #heroes == 0 then return 0 end
 
@@ -294,20 +363,37 @@ function Quests.calculateSuccessChance(quest, heroes, EquipmentSystem)
     local config = data.config
 
     local totalPower = 0
-    local totalRelevantStat = 0
+    local totalPrimaryStat = 0
+    local totalSecondaryStats = {}  -- Track each secondary stat total
     local totalLuck = 0
+
+    -- Initialize secondary stat tracking
+    for _, secStat in ipairs(quest.secondaryStats or {}) do
+        totalSecondaryStats[secStat.stat] = 0
+    end
 
     for _, hero in ipairs(heroes) do
         totalPower = totalPower + hero.power
 
-        local baseStat = hero.stats[quest.requiredStat] or 10
+        -- Get injury penalty multiplier
+        local injuryPenalty = hero.injuryState and injuryPenalties[hero.injuryState] or 1.0
+
+        -- Apply injury penalty to primary stat
+        local baseStat = math.floor((hero.stats[quest.requiredStat] or 10) * injuryPenalty)
         local equipStatBonus = 0
         if EquipmentSystem then
             equipStatBonus = EquipmentSystem.getStatBonus(hero, quest.requiredStat)
         end
-        totalRelevantStat = totalRelevantStat + baseStat + equipStatBonus
+        totalPrimaryStat = totalPrimaryStat + baseStat + equipStatBonus
 
-        local baseLuck = hero.stats.luck
+        -- Calculate secondary stats
+        for _, secStat in ipairs(quest.secondaryStats or {}) do
+            local secBase = math.floor((hero.stats[secStat.stat] or 5) * injuryPenalty)
+            local secEquip = EquipmentSystem and EquipmentSystem.getStatBonus(hero, secStat.stat) or 0
+            totalSecondaryStats[secStat.stat] = (totalSecondaryStats[secStat.stat] or 0) + secBase + secEquip
+        end
+
+        local baseLuck = math.floor((hero.stats.luck or 5) * injuryPenalty)
         local equipLuckBonus = 0
         if EquipmentSystem then
             equipLuckBonus = EquipmentSystem.getStatBonus(hero, "luck")
@@ -325,11 +411,21 @@ function Quests.calculateSuccessChance(quest, heroes, EquipmentSystem)
         rankBonus = config.rankBonus[quest.rank] or 0
     end
 
-    -- Stat bonus
+    -- Primary stat bonus (weighted at 1.0)
     local expectedStats = config.expectedStats or {D = 5, C = 7, B = 10, A = 13, S = 16}
     local expected = expectedStats[quest.rank] or 8
-    local avgStat = totalRelevantStat / #heroes
-    local statBonus = (avgStat - expected) * 0.02
+    local avgPrimaryStat = totalPrimaryStat / #heroes
+    local primaryStatBonus = (avgPrimaryStat - expected) * 0.02
+
+    -- Secondary stat bonuses (weighted by their importance)
+    local secondaryStatBonus = 0
+    for _, secStat in ipairs(quest.secondaryStats or {}) do
+        local avgSecStat = (totalSecondaryStats[secStat.stat] or 0) / #heroes
+        -- Secondary stats compared against a lower expectation
+        local secExpected = math.floor(expected * 0.7)
+        local secBonus = (avgSecStat - secExpected) * 0.015 * secStat.weight
+        secondaryStatBonus = secondaryStatBonus + secBonus
+    end
 
     -- Luck bonus
     local avgLuck = totalLuck / #heroes
@@ -344,7 +440,7 @@ function Quests.calculateSuccessChance(quest, heroes, EquipmentSystem)
         synergySuccessBonus = synergySuccessBonus + synergyBonuses.statBonuses[quest.requiredStat]
     end
 
-    local finalChance = baseChance + rankBonus + statBonus + luckBonus + synergySuccessBonus
+    local finalChance = baseChance + rankBonus + primaryStatBonus + secondaryStatBonus + luckBonus + synergySuccessBonus
     return math.max(0.15, math.min(0.98, finalChance))
 end
 
