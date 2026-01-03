@@ -28,6 +28,8 @@ local selectedHeroes = {}  -- Table of hero IDs
 local selectedHeroDetail = nil  -- Hero being viewed in detail popup
 local equipDropdownSlot = nil  -- Which slot's dropdown is open (weapon/armor/accessory)
 local equipDropdownItems = {}  -- Items available in dropdown
+local statDisplayMode = "bars"  -- "bars" or "graph" for hero detail popup
+local heroToFire = nil  -- Hero ID pending fire confirmation
 
 -- Tooltip/hover state
 local mouseX, mouseY = 0, 0
@@ -48,6 +50,7 @@ function GuildMenu.resetState()
     hoveredSynergyPos = nil
     synergyHelpHovered = false
     hoveredHeroId = nil
+    heroToFire = nil
 end
 
 -- Update mouse position for hover effects (call from main update)
@@ -62,6 +65,7 @@ local _EquipmentSystem = nil
 local _equipSlotPositions = {}
 local _gameData = nil
 local _Quests = nil  -- For quest stat requirements
+local _toggleBtnPos = nil  -- For stats display toggle button
 
 -- Helper: Get quest stat requirements for pentagon chart
 local function getQuestStatRequirements(quest, Quests)
@@ -265,18 +269,84 @@ function drawHeroDetailPopup(hero, Heroes)
         text = hero.xp .. "/" .. hero.xpToLevel .. " XP"
     })
 
-    -- Pentagon stat chart (right side)
+    -- Pentagon stat chart (right side) - includes equipment bonuses
     local pentagonX = popupX + popupW - 130
     local pentagonY = popupY + 150
-    Components.drawPentagonChart(hero.stats, pentagonX, pentagonY, 70, {
-        showLabels = true,
-        fillColor = {0.8, 0.7, 0.2, 0.5},
-        lineColor = {1, 0.9, 0.3, 1}
-    })
 
-    -- Stats section (left side)
+    -- Calculate effective stats (base + equipment + injury)
+    local effectiveStats = {}
+    local baseStats = {}
+    for _, stat in ipairs({"str", "dex", "int", "vit", "luck"}) do
+        local base = hero.stats[stat] or 0
+        local equipBonus = _EquipmentSystem and _EquipmentSystem.getStatBonus(hero, stat) or 0
+        baseStats[stat] = base
+        effectiveStats[stat] = base + equipBonus
+    end
+
+    -- Draw effective stats (with equipment) as main, base stats as inner reference
+    local hasEquipment = false
+    for stat, val in pairs(effectiveStats) do
+        if val > baseStats[stat] then hasEquipment = true break end
+    end
+
+    if hasEquipment then
+        -- Show effective stats as main filled area, base stats as white inner line
+        Components.drawPentagonChart(effectiveStats, pentagonX, pentagonY, 70, {
+            showLabels = true,
+            fillColor = {0.3, 0.7, 0.3, 0.5},   -- Green tint for equipped
+            lineColor = {0.4, 0.9, 0.4, 1},     -- Bright green outline
+            overlayStats = baseStats,
+            overlayColor = {1, 0.9, 0.3, 0.6}   -- Gold line showing base stats
+        })
+        -- Equipment indicator below pentagon
+        love.graphics.setColor(Components.colors.success)
+        love.graphics.printf("+ Gear", pentagonX - 35, pentagonY + 75, 70, "center")
+    else
+        -- No equipment - just show base stats in gold
+        Components.drawPentagonChart(effectiveStats, pentagonX, pentagonY, 70, {
+            showLabels = true,
+            fillColor = {0.8, 0.7, 0.2, 0.5},
+            lineColor = {1, 0.9, 0.3, 1}
+        })
+    end
+
+    -- Stats section (left side) with toggle button
     love.graphics.setColor(Components.colors.text)
     love.graphics.print("STATS", popupX + 20, popupY + 115)
+
+    -- Bars/Graph toggle button
+    local toggleBtnX = popupX + 80
+    local toggleBtnY = popupY + 112
+    local toggleBtnW = 90
+    local toggleBtnH = 22
+
+    -- Toggle button background
+    love.graphics.setColor(0.25, 0.3, 0.35)
+    love.graphics.rectangle("fill", toggleBtnX, toggleBtnY, toggleBtnW, toggleBtnH, 3, 3)
+
+    -- Bars half
+    local barsSelected = statDisplayMode == "bars"
+    if barsSelected then
+        love.graphics.setColor(0.4, 0.5, 0.6)
+    else
+        love.graphics.setColor(0.2, 0.25, 0.3)
+    end
+    love.graphics.rectangle("fill", toggleBtnX + 2, toggleBtnY + 2, toggleBtnW/2 - 4, toggleBtnH - 4, 2, 2)
+    love.graphics.setColor(barsSelected and Components.colors.text or Components.colors.textDim)
+    love.graphics.printf("Bars", toggleBtnX + 2, toggleBtnY + 4, toggleBtnW/2 - 4, "center")
+
+    -- Graph half
+    if not barsSelected then
+        love.graphics.setColor(0.4, 0.5, 0.6)
+    else
+        love.graphics.setColor(0.2, 0.25, 0.3)
+    end
+    love.graphics.rectangle("fill", toggleBtnX + toggleBtnW/2, toggleBtnY + 2, toggleBtnW/2 - 2, toggleBtnH - 4, 2, 2)
+    love.graphics.setColor(not barsSelected and Components.colors.text or Components.colors.textDim)
+    love.graphics.printf("Graph", toggleBtnX + toggleBtnW/2, toggleBtnY + 4, toggleBtnW/2 - 2, "center")
+
+    -- Store toggle button position for click handling
+    _toggleBtnPos = {x = toggleBtnX, y = toggleBtnY, w = toggleBtnW, h = toggleBtnH}
 
     local statY = popupY + 138
     local statData = {
@@ -294,47 +364,85 @@ function drawHeroDetailPopup(hero, Heroes)
         injuryPenalty = injuryInfo.statPenalty or 1.0
     end
 
-    for _, stat in ipairs(statData) do
-        local baseValue = hero.stats[stat.key] or 0
-        local effectiveValue = math.floor(baseValue * injuryPenalty)
-        local equipBonus = _EquipmentSystem and _EquipmentSystem.getStatBonus(hero, stat.key) or 0
+    -- Only show bars when in bars mode
+    if statDisplayMode == "bars" then
+        for _, stat in ipairs(statData) do
+            local baseValue = hero.stats[stat.key] or 0
+            local effectiveValue = math.floor(baseValue * injuryPenalty)
+            local equipBonus = _EquipmentSystem and _EquipmentSystem.getStatBonus(hero, stat.key) or 0
 
-        love.graphics.setColor(stat.color)
-        love.graphics.print(stat.name, popupX + 30, statY)
-
-        -- Stat bar
-        local barW = 150
-        local barH = 12
-        love.graphics.setColor(0.2, 0.2, 0.2)
-        love.graphics.rectangle("fill", popupX + 70, statY + 2, barW, barH)
-
-        -- Effective stat (with injury)
-        love.graphics.setColor(stat.color[1] * 0.7, stat.color[2] * 0.7, stat.color[3] * 0.7)
-        love.graphics.rectangle("fill", popupX + 70, statY + 2, barW * math.min(effectiveValue / 20, 1), barH)
-
-        -- Equipment bonus
-        if equipBonus > 0 then
             love.graphics.setColor(stat.color)
-            love.graphics.rectangle("fill", popupX + 70 + barW * (effectiveValue / 20), statY + 2,
-                barW * math.min(equipBonus / 20, 1 - effectiveValue / 20), barH)
-        end
+            love.graphics.print(stat.name, popupX + 30, statY)
 
-        -- Value display
-        love.graphics.setColor(Components.colors.text)
-        if injuryPenalty < 1 then
-            love.graphics.setColor(Components.colors.injured)
-            love.graphics.print(effectiveValue, popupX + 230, statY)
-            love.graphics.setColor(Components.colors.textDim)
-            love.graphics.print("(" .. baseValue .. ")", popupX + 255, statY)
+            -- Stat bar
+            local barW = 150
+            local barH = 12
+            love.graphics.setColor(0.2, 0.2, 0.2)
+            love.graphics.rectangle("fill", popupX + 70, statY + 2, barW, barH)
+
+            -- Effective stat (with injury)
+            love.graphics.setColor(stat.color[1] * 0.7, stat.color[2] * 0.7, stat.color[3] * 0.7)
+            love.graphics.rectangle("fill", popupX + 70, statY + 2, barW * math.min(effectiveValue / 20, 1), barH)
+
+            -- Equipment bonus
+            if equipBonus > 0 then
+                love.graphics.setColor(stat.color)
+                love.graphics.rectangle("fill", popupX + 70 + barW * (effectiveValue / 20), statY + 2,
+                    barW * math.min(equipBonus / 20, 1 - effectiveValue / 20), barH)
+            end
+
+            -- Value display
+            love.graphics.setColor(Components.colors.text)
+            if injuryPenalty < 1 then
+                love.graphics.setColor(Components.colors.injured)
+                love.graphics.print(effectiveValue, popupX + 230, statY)
+                love.graphics.setColor(Components.colors.textDim)
+                love.graphics.print("(" .. baseValue .. ")", popupX + 255, statY)
+            else
+                love.graphics.print(baseValue, popupX + 230, statY)
+            end
+            if equipBonus > 0 then
+                love.graphics.setColor(Components.colors.success)
+                love.graphics.print("+" .. equipBonus, popupX + 285, statY)
+            end
+
+            statY = statY + 22
+        end
+    else
+        -- Graph mode: show larger pentagon in center of stat area
+        local graphCenterX = popupX + 170
+        local graphCenterY = popupY + 210
+
+        -- Show numerical values next to the pentagon
+        if hasEquipment then
+            Components.drawPentagonChart(effectiveStats, graphCenterX, graphCenterY, 85, {
+                showLabels = true,
+                fillColor = {0.3, 0.7, 0.3, 0.5},
+                lineColor = {0.4, 0.9, 0.4, 1},
+                overlayStats = baseStats,
+                overlayColor = {1, 0.9, 0.3, 0.6}
+            })
         else
-            love.graphics.print(baseValue, popupX + 230, statY)
-        end
-        if equipBonus > 0 then
-            love.graphics.setColor(Components.colors.success)
-            love.graphics.print("+" .. equipBonus, popupX + 285, statY)
+            Components.drawPentagonChart(effectiveStats, graphCenterX, graphCenterY, 85, {
+                showLabels = true,
+                fillColor = {0.8, 0.7, 0.2, 0.5},
+                lineColor = {1, 0.9, 0.3, 1}
+            })
         end
 
-        statY = statY + 22
+        -- Show stat values as compact list below pentagon
+        local valueY = graphCenterY + 95
+        love.graphics.setColor(Components.colors.textDim)
+        local valueStr = ""
+        for _, stat in ipairs(statData) do
+            local baseValue = hero.stats[stat.key] or 0
+            local equipBonus = _EquipmentSystem and _EquipmentSystem.getStatBonus(hero, stat.key) or 0
+            local totalVal = baseValue + equipBonus
+            valueStr = valueStr .. stat.name .. ":" .. totalVal .. "  "
+        end
+        love.graphics.printf(valueStr, popupX + 20, valueY, popupW - 40, "center")
+
+        statY = valueY + 20
     end
 
     -- Status section
@@ -580,6 +688,26 @@ function drawRosterTab(gameData, startY, height, Heroes, TimeSystem, GuildSystem
         if hero.status == "idle" then
             love.graphics.setColor(Components.colors.success)
             love.graphics.print("AVAILABLE", statusX, y + 18)
+
+            -- Fire button (only for idle heroes)
+            local fireBtnX = MENU.x + 520
+            local fireBtnY = y + 15
+            local fireBtnW = 50
+            local fireBtnH = 24
+
+            if heroToFire == hero.id then
+                -- Confirmation state - show "Sure?" button
+                love.graphics.setColor(0.7, 0.2, 0.2)
+                love.graphics.rectangle("fill", fireBtnX, fireBtnY, fireBtnW, fireBtnH, 3, 3)
+                love.graphics.setColor(1, 1, 1)
+                love.graphics.printf("Sure?", fireBtnX, fireBtnY + 5, fireBtnW, "center")
+            else
+                -- Normal Fire button
+                love.graphics.setColor(0.5, 0.3, 0.3)
+                love.graphics.rectangle("fill", fireBtnX, fireBtnY, fireBtnW, fireBtnH, 3, 3)
+                love.graphics.setColor(0.9, 0.6, 0.6)
+                love.graphics.printf("Fire", fireBtnX, fireBtnY + 5, fireBtnW, "center")
+            end
         elseif hero.status == "resting" then
             love.graphics.setColor(0.6, 0.4, 0.7)
             love.graphics.print("RESTING", statusX, y + 8)
@@ -681,12 +809,27 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
                 end
             end
 
-            -- Required stat indicator
-            local statNames = {str = "STR", dex = "DEX", int = "INT"}
-            local statColors = {str = {0.8, 0.4, 0.4}, dex = {0.4, 0.8, 0.4}, int = {0.4, 0.4, 0.8}}
+            -- Required stat indicator (primary + secondary)
+            local statNames = {str = "STR", dex = "DEX", int = "INT", vit = "VIT", luck = "LCK"}
+            local statColors = {
+                str = {0.8, 0.4, 0.4},
+                dex = {0.4, 0.8, 0.4},
+                int = {0.4, 0.4, 0.8},
+                vit = {0.8, 0.6, 0.3},
+                luck = {0.7, 0.5, 0.8}
+            }
             local reqStat = quest.requiredStat or "str"
+
+            -- Build stat requirement string
+            local statStr = statNames[reqStat] or "STR"
+            if quest.secondaryStats and #quest.secondaryStats > 0 then
+                for _, secStat in ipairs(quest.secondaryStats) do
+                    statStr = statStr .. "+" .. (statNames[secStat.stat] or "?")
+                end
+            end
+
             love.graphics.setColor(statColors[reqStat] or Components.colors.textDim)
-            love.graphics.print("Needs: " .. (statNames[reqStat] or "STR"), MENU.x + 65, y + 26)
+            love.graphics.print("Needs: " .. statStr, MENU.x + 65, y + 26)
 
             love.graphics.setColor(Components.colors.textDim)
             local totalTime = Quests.getTotalTime(quest)
@@ -739,35 +882,75 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
             end
         end
 
-        -- Show hero count AND power
-        love.graphics.setColor(Components.colors.textDim)
-        love.graphics.print(string.format("Heroes: %d selected", #partyHeroes), partyX, startY + 18)
+        -- Show hero count with limit
+        local maxHeroes = selectedQuest.maxHeroes or 6
+        local heroCountColor = #partyHeroes >= maxHeroes and Components.colors.warning or Components.colors.textDim
+        love.graphics.setColor(heroCountColor)
+        love.graphics.print(string.format("Heroes: %d/%d", #partyHeroes, maxHeroes), partyX, startY + 18)
 
         local powerColor = partyPower >= selectedQuest.requiredPower and Components.colors.success or Components.colors.danger
         love.graphics.setColor(powerColor)
         love.graphics.print(string.format("Power: %d / %d needed", partyPower, selectedQuest.requiredPower),
             partyX, startY + 34)
 
-        -- Party stat total for required stat (base + equipment)
+        -- Party stat totals for required stats (primary + secondary)
         local reqStat = selectedQuest.requiredStat or "str"
-        local statNames = {str = "STR", dex = "DEX", int = "INT"}
-        local statColors = {str = {0.8, 0.4, 0.4}, dex = {0.4, 0.8, 0.4}, int = {0.4, 0.4, 0.8}}
-        local totalReqStat = 0
-        local totalEquipBonus = 0
-        for _, hero in ipairs(partyHeroes) do
-            totalReqStat = totalReqStat + (hero.stats[reqStat] or 0)
-            if _EquipmentSystem then
-                totalEquipBonus = totalEquipBonus + _EquipmentSystem.getStatBonus(hero, reqStat)
+        local statNames = {str = "STR", dex = "DEX", int = "INT", vit = "VIT", luck = "LCK"}
+        local statColors = {
+            str = {0.8, 0.4, 0.4},
+            dex = {0.4, 0.8, 0.4},
+            int = {0.4, 0.4, 0.8},
+            vit = {0.8, 0.6, 0.3},
+            luck = {0.7, 0.5, 0.8}
+        }
+
+        -- Build list of all required stats (primary + secondary)
+        local allReqStats = {{stat = reqStat, weight = 1.0}}
+        if selectedQuest.secondaryStats then
+            for _, secStat in ipairs(selectedQuest.secondaryStats) do
+                table.insert(allReqStats, secStat)
             end
         end
 
-        love.graphics.setColor(statColors[reqStat] or Components.colors.textDim)
-        if totalEquipBonus > 0 then
-            love.graphics.print(string.format("Party %s: %d", statNames[reqStat] or "STR", totalReqStat), partyX + 150, startY + 34)
-            love.graphics.setColor(Components.colors.success)
-            love.graphics.print(string.format("+%d", totalEquipBonus), partyX + 260, startY + 34)
-        else
-            love.graphics.print(string.format("Party %s: %d", statNames[reqStat] or "STR", totalReqStat), partyX + 150, startY + 34)
+        -- Display stats inline (compact format)
+        local statDisplayX = partyX
+        local statDisplayY = startY + 50
+        love.graphics.setColor(Components.colors.textDim)
+        love.graphics.print("Stats:", statDisplayX, statDisplayY)
+
+        local xOffset = 45
+        for i, statInfo in ipairs(allReqStats) do
+            if i > 3 then break end  -- Limit to 3 stats displayed
+
+            local stat = statInfo.stat
+            local totalStat = 0
+            local totalEquip = 0
+            for _, hero in ipairs(partyHeroes) do
+                totalStat = totalStat + (hero.stats[stat] or 0)
+                if _EquipmentSystem then
+                    totalEquip = totalEquip + _EquipmentSystem.getStatBonus(hero, stat)
+                end
+            end
+
+            -- Primary stat shown in full, secondary stats show weight indicator
+            local label = statNames[stat] or "?"
+            if statInfo.weight < 1 then
+                -- Secondary stat - show with weight indicator
+                love.graphics.setColor(statColors[stat] or Components.colors.textDim)
+                love.graphics.print(label .. ":" .. totalStat, statDisplayX + xOffset, statDisplayY)
+            else
+                -- Primary stat
+                love.graphics.setColor(statColors[stat] or Components.colors.textDim)
+                love.graphics.print(label .. ":" .. totalStat, statDisplayX + xOffset, statDisplayY)
+            end
+
+            if totalEquip > 0 then
+                love.graphics.setColor(Components.colors.success)
+                love.graphics.print("+" .. totalEquip, statDisplayX + xOffset + 50, statDisplayY)
+                xOffset = xOffset + 70
+            else
+                xOffset = xOffset + 55
+            end
         end
 
         -- Pentagon stat comparison chart (quest requirements vs party stats)
@@ -775,24 +958,18 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
         local pentagonY = startY + 100
         local pentagonRadius = 55
 
-        -- Get quest requirements and party stats
+        -- Get quest requirements and party stats (summed across all heroes)
         local questReqs = getQuestStatRequirements(selectedQuest, Quests)
         local partyStats = getPartyStats(partyHeroes, _EquipmentSystem)
 
-        -- Scale factor for multi-hero parties (divide by party size to show average comparison)
-        local maxStatForChart = 20
-        if #partyHeroes > 1 then
-            -- For parties, we compare total stats vs scaled requirements
-            -- Scale quest reqs up by party size for fair comparison
-            for stat, val in pairs(questReqs) do
-                questReqs[stat] = val * #partyHeroes
-            end
-            maxStatForChart = 20 * #partyHeroes
-        end
+        -- Fixed max scale that allows pentagon to GROW as you add heroes
+        -- Quest reqs are for 1 hero, party stats are summed - pentagon shows growth!
+        local maxStatForChart = 30  -- Allows room to show combined stats
 
         -- Draw pentagon: quest requirements as outline, party stats as filled
         if #partyHeroes > 0 then
-            -- Party stats filled (gold), quest requirements as white outline
+            -- Party stats filled (green), quest requirements as white outline
+            -- The pentagon GROWS as you add more heroes since stats are summed!
             Components.drawPentagonChart(partyStats, pentagonX, pentagonY, pentagonRadius, {
                 showLabels = true,
                 fillColor = {0.3, 0.7, 0.3, 0.5},   -- Green when party has stats
@@ -811,23 +988,28 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
             })
         end
 
-        -- Chart legend
+        -- Chart legend and combined stats display
         love.graphics.setColor(Components.colors.textDim)
-        love.graphics.print("Stat Match", pentagonX - 25, pentagonY + pentagonRadius + 10)
+        love.graphics.print("Combined Stats", pentagonX - 35, pentagonY + pentagonRadius + 8)
         if #partyHeroes > 0 then
+            -- Show hero count
             love.graphics.setColor(0.3, 0.7, 0.3)
-            love.graphics.rectangle("fill", pentagonX - 40, pentagonY + pentagonRadius + 28, 10, 10)
+            love.graphics.print(#partyHeroes .. " hero" .. (#partyHeroes > 1 and "es" or ""), pentagonX - 35, pentagonY + pentagonRadius + 24)
+
+            -- Legend
+            love.graphics.setColor(0.3, 0.7, 0.3)
+            love.graphics.rectangle("fill", pentagonX - 40, pentagonY + pentagonRadius + 42, 10, 10)
             love.graphics.setColor(Components.colors.textDim)
-            love.graphics.print("Party", pentagonX - 25, pentagonY + pentagonRadius + 26)
+            love.graphics.print("Party", pentagonX - 25, pentagonY + pentagonRadius + 40)
 
             love.graphics.setColor(1, 1, 1, 0.7)
-            love.graphics.rectangle("line", pentagonX + 20, pentagonY + pentagonRadius + 28, 10, 10)
+            love.graphics.rectangle("line", pentagonX + 20, pentagonY + pentagonRadius + 42, 10, 10)
             love.graphics.setColor(Components.colors.textDim)
-            love.graphics.print("Quest", pentagonX + 35, pentagonY + pentagonRadius + 26)
+            love.graphics.print("Quest", pentagonX + 35, pentagonY + pentagonRadius + 40)
         end
 
         -- Success chance (color coded, includes equipment bonuses)
-        local successY = startY + 52
+        local successY = startY + 68
         if #partyHeroes > 0 then
             local chance = Quests.calculateSuccessChance(selectedQuest, partyHeroes, _EquipmentSystem)
             local chancePercent = chance * 100
@@ -947,8 +1129,8 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
             end
         end
 
-        -- Available heroes list
-        local y = math.max(synergyY + 8, startY + 90)
+        -- Available heroes list (positioned below the pentagon chart area)
+        local y = math.max(synergyY + 8, startY + 210)
         for i, hero in ipairs(gameData.heroes) do
             if y + 32 > MENU.y + MENU.height - 60 then break end
 
@@ -1192,6 +1374,17 @@ function GuildMenu.handleClick(x, y, gameData, QuestSystem, Quests, Heroes, Guil
             return nil
         end
 
+        -- Bars/Graph toggle button
+        if _toggleBtnPos and Components.isPointInRect(x, y, _toggleBtnPos.x, _toggleBtnPos.y, _toggleBtnPos.w, _toggleBtnPos.h) then
+            -- Toggle between bars and graph mode
+            if statDisplayMode == "bars" then
+                statDisplayMode = "graph"
+            else
+                statDisplayMode = "bars"
+            end
+            return nil
+        end
+
         -- Handle dropdown item selection first (if dropdown is open)
         if equipDropdownSlot and #equipDropdownItems > 0 then
             -- Find dropdown position
@@ -1305,7 +1498,7 @@ function GuildMenu.handleClick(x, y, gameData, QuestSystem, Quests, Heroes, Guil
 
     local contentY = tabY + 50
 
-    -- Roster tab - click on hero to view details
+    -- Roster tab - click on hero to view details or fire
     if currentTab == "roster" then
         local cardHeight = 55
         local cardWidth = MENU.width - 40
@@ -1314,8 +1507,44 @@ function GuildMenu.handleClick(x, y, gameData, QuestSystem, Quests, Heroes, Guil
         for i, hero in ipairs(gameData.heroes) do
             if heroY + cardHeight > MENU.y + MENU.height - 20 then break end
 
+            -- Check Fire button click first (only for idle heroes)
+            if hero.status == "idle" then
+                local fireBtnX = MENU.x + 520
+                local fireBtnY = heroY + 15
+                local fireBtnW = 50
+                local fireBtnH = 24
+
+                if Components.isPointInRect(x, y, fireBtnX, fireBtnY, fireBtnW, fireBtnH) then
+                    if heroToFire == hero.id then
+                        -- Confirm fire - remove hero from roster
+                        for j, h in ipairs(gameData.heroes) do
+                            if h.id == hero.id then
+                                -- Unequip all equipment first (return to inventory)
+                                if hero.equipment then
+                                    for slot, itemId in pairs(hero.equipment) do
+                                        if itemId and _gameData then
+                                            _gameData.inventory.equipment[itemId] = (_gameData.inventory.equipment[itemId] or 0) + 1
+                                        end
+                                    end
+                                end
+                                table.remove(gameData.heroes, j)
+                                break
+                            end
+                        end
+                        heroToFire = nil
+                        return "fired", hero.name .. " has been dismissed from the guild."
+                    else
+                        -- First click - set confirmation state
+                        heroToFire = hero.id
+                    end
+                    return nil
+                end
+            end
+
+            -- Click elsewhere on card opens details (only if not on active quest)
             if Components.isPointInRect(x, y, MENU.x + 20, heroY, cardWidth, cardHeight) then
-                -- Only allow viewing details if not on active quest
+                -- Reset fire confirmation if clicking elsewhere
+                heroToFire = nil
                 if hero.status == "idle" or hero.status == "resting" then
                     selectedHeroDetail = hero
                 end
@@ -1323,6 +1552,9 @@ function GuildMenu.handleClick(x, y, gameData, QuestSystem, Quests, Heroes, Guil
             end
             heroY = heroY + cardHeight + 5
         end
+
+        -- Clicking anywhere else resets fire confirmation
+        heroToFire = nil
     end
 
     if currentTab == "quests" then
@@ -1349,52 +1581,29 @@ function GuildMenu.handleClick(x, y, gameData, QuestSystem, Quests, Heroes, Guil
                 return nil
             end
 
-            -- Hero selection - calculate dynamic Y position based on content
-            -- Start after base info (52) + synergies + death warning + possible rewards
-            local heroListStartY = contentY + 90  -- Base minimum position
+            -- Hero selection - fixed position below pentagon chart
+            -- This matches the drawing code: math.max(synergyY + 8, startY + 210)
+            local heroListStartY = contentY + 210
 
-            -- Account for selected heroes having synergies
-            local partyHeroes = {}
-            for heroId, isSelected in pairs(selectedHeroes) do
-                if isSelected == true then
-                    for _, hero in ipairs(gameData.heroes) do
-                        if hero.id == heroId and hero.status == "idle" then
-                            table.insert(partyHeroes, hero)
-                            break
-                        end
-                    end
-                end
+            -- Count currently selected heroes
+            local currentCount = 0
+            for _, isSelected in pairs(selectedHeroes) do
+                if isSelected then currentCount = currentCount + 1 end
             end
-
-            -- Adjust Y based on synergies display
-            if #partyHeroes > 0 then
-                local synergyBonuses = Quests.getSynergyBonuses(partyHeroes, selectedQuest)
-                local activeSynergies = synergyBonuses.activeSynergies or {}
-                if #activeSynergies > 0 then
-                    heroListStartY = heroListStartY + 16
-                end
-            end
-
-            -- Adjust for death warning
-            if selectedQuest.combat and (selectedQuest.rank == "A" or selectedQuest.rank == "S") then
-                heroListStartY = heroListStartY + 18
-            end
-
-            -- Adjust for possible rewards
-            if selectedQuest.possibleRewards then
-                local rewardCount = math.min(#selectedQuest.possibleRewards, 3)
-                heroListStartY = heroListStartY + 18 + (rewardCount * 14)
-            end
+            local maxHeroes = selectedQuest.maxHeroes or 6
 
             local heroY = heroListStartY
             for i, hero in ipairs(gameData.heroes) do
                 if hero.status == "idle" then
                     if Components.isPointInRect(x, y, partyX, heroY, partyWidth, 28) then
                         if selectedHeroes[hero.id] then
+                            -- Always allow deselection
                             selectedHeroes[hero.id] = nil
-                        else
+                        elseif currentCount < maxHeroes then
+                            -- Only allow selection if under limit
                             selectedHeroes[hero.id] = true
                         end
+                        -- If at limit and trying to select, do nothing (visual feedback via warning color)
                         return nil
                     end
                     heroY = heroY + 32

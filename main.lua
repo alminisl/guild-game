@@ -128,19 +128,9 @@ function love.update(dt)
         gameData.tavernPool = Heroes.generateTavernPool(4, maxRank, guildLevel)
     end
 
-    -- Check for night/day transition to refresh quests
-    local isNight = TimeSystem.isNight(gameData)
-    if isNight ~= wasNight then
-        wasNight = isNight
-        -- Refresh available quests with appropriate pool
-        local maxRank = GuildSystem.getMaxTavernRank(gameData)
-        gameData.availableQuests = Quests.generatePool(5, maxRank, isNight)
-        if isNight then
-            addNotification("Night falls... dark quests emerge!", "info")
-        else
-            addNotification("Dawn breaks... the night quests fade.", "info")
-        end
-    end
+    -- Track night state for visual sync (but don't auto-refresh quests)
+    -- Quest refresh is now manual via the day/night toggle button
+    wasNight = TimeSystem.isNight(gameData)
 
     -- Update quest system (real-time quest progress)
     local questResults = QuestSystem.update(gameData, dt, Heroes, Quests, Economy, GuildSystem, Materials, EquipmentSystem)
@@ -313,6 +303,27 @@ function love.mousepressed(x, y, button)
     end
 
     if currentState == STATE.TOWN then
+        -- Check day/night toggle button first (only works when time period is ending)
+        if Town.getDayNightButtonAt(x, y, gameData, TimeSystem) then
+            local isNight, period = TimeSystem.toggleDayNight(gameData)
+
+            -- Refresh quests based on new time
+            local maxRank = GuildSystem.getMaxTavernRank(gameData)
+            gameData.availableQuests = Quests.generatePool(5, maxRank, isNight)
+
+            if isNight then
+                addNotification("Night falls... dark quests emerge!", "info")
+            else
+                love.window.setTitle("Guild Management - Day " .. gameData.day)
+                addNotification("A new day begins!", "info")
+
+                -- Refresh tavern on new day
+                local guildLevel = gameData.guild.level or 1
+                gameData.tavernPool = Heroes.generateTavernPool(4, maxRank, guildLevel)
+            end
+            return
+        end
+
         -- Check building clicks
         local buildingId = Town.getBuildingAt(x, y)
         if buildingId == "tavern" then
@@ -348,6 +359,8 @@ function love.mousepressed(x, y, button)
             addNotification(message, "success")
         elseif result == "equip_changed" then
             addNotification(message, "success")
+        elseif result == "fired" then
+            addNotification(message, "info")
         elseif result == "error" then
             addNotification(message, "error")
         end

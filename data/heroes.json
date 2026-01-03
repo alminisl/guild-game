@@ -22,11 +22,11 @@
             "S": 5
         },
         "baseStats": {
-            "D": { "min": 3, "max": 6 },
-            "C": { "min": 5, "max": 9 },
-            "B": { "min": 8, "max": 12 },
-            "A": { "min": 11, "max": 15 },
-            "S": { "min": 14, "max": 18 }
+            "D": { "min": 2, "max": 5, "cap": 10 },
+            "C": { "min": 3, "max": 6, "cap": 10 },
+            "B": { "min": 5, "max": 8, "cap": 10 },
+            "A": { "min": 10, "max": 13, "cap": 17 },
+            "S": { "min": 14, "max": 17, "cap": 20 }
         },
         "guildLevelToHeroLevel": {
             "1": { "min": 1, "max": 2 },

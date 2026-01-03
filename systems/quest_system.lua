@@ -9,6 +9,12 @@ function QuestSystem.assignParty(quest, heroes, gameData)
         return false, "Quest is not available"
     end
 
+    -- Check hero count limit
+    local maxHeroes = quest.maxHeroes or 6
+    if #heroes > maxHeroes then
+        return false, "Too many heroes! Max " .. maxHeroes .. " for this quest."
+    end
+
     -- Calculate party power
     local partyPower = 0
     for _, hero in ipairs(heroes) do

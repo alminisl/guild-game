@@ -88,4 +88,26 @@ function TimeSystem.setTimeScale(scale)
     TimeSystem.config.timeScale = scale
 end
 
+-- Toggle between day and night manually
+-- Returns true if transitioned to night, false if transitioned to day
+function TimeSystem.toggleDayNight(gameData)
+    local isCurrentlyNight = TimeSystem.isNight(gameData)
+
+    if isCurrentlyNight then
+        -- Move to day (start of morning)
+        gameData.dayProgress = 0.05  -- Early morning
+        gameData.day = gameData.day + 1  -- New day when moving from night to day
+        return false, "day"
+    else
+        -- Move to night
+        gameData.dayProgress = 0.76  -- Start of night
+        return true, "night"
+    end
+end
+
+-- Set specific time of day (0-1)
+function TimeSystem.setDayProgress(gameData, progress)
+    gameData.dayProgress = math.max(0, math.min(1, progress))
+end
+
 return TimeSystem

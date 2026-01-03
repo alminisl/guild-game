@@ -251,17 +251,88 @@ function Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
 
     -- Time controls hint
     love.graphics.setColor(Components.colors.textDim)
-    love.graphics.print("+/- Speed", 960, 16)
+    love.graphics.print("+/- Speed", 920, 16)
 
     -- Graveyard count
     if gameData.graveyard and #gameData.graveyard > 0 then
         love.graphics.setColor(0.6, 0.3, 0.3)
-        love.graphics.print("Fallen: " .. #gameData.graveyard, 1080, 16)
+        love.graphics.print("Fallen: " .. #gameData.graveyard, 1000, 16)
+    end
+
+    -- Day/Night toggle button (top right)
+    -- Only clickable at the end of the current period
+    local isNight = TimeSystem and TimeSystem.isNight(gameData) or false
+    local progress = gameData.dayProgress or 0
+
+    -- Calculate if button should be enabled
+    -- During day (0-0.75): enabled when progress > 0.70 (last 5% of day)
+    -- During night (0.75-1): enabled when progress > 0.95 (last 5% of night)
+    local canToggle = false
+    local timeRemaining = ""
+    if isNight then
+        canToggle = progress >= 0.95
+        local remaining = (1.0 - progress) * TimeSystem.config.dayDuration
+        timeRemaining = TimeSystem.formatDuration(remaining)
+    else
+        canToggle = progress >= 0.70
+        local remaining = (0.75 - progress) * TimeSystem.config.dayDuration
+        timeRemaining = TimeSystem.formatDuration(math.max(0, remaining))
+    end
+
+    local btnText = isNight and "Move to Day" or "Move to Night"
+    local btnColor
+    if canToggle then
+        btnColor = isNight and {0.7, 0.6, 0.3} or {0.3, 0.3, 0.6}
+    else
+        btnColor = {0.3, 0.3, 0.3}  -- Disabled gray
+    end
+
+    love.graphics.setColor(btnColor)
+    love.graphics.rectangle("fill", 1100, 8, 170, 34, 5, 5)
+    love.graphics.setColor(canToggle and {0.9, 0.9, 0.9} or {0.5, 0.5, 0.5})
+    love.graphics.rectangle("line", 1100, 8, 170, 34, 5, 5)
+
+    -- Button icon (sun or moon)
+    if isNight then
+        love.graphics.setColor(canToggle and {1, 0.9, 0.5} or {0.6, 0.5, 0.3})  -- Sun color
+        love.graphics.circle("fill", 1120, 25, 8)
+    else
+        love.graphics.setColor(canToggle and {0.9, 0.9, 1} or {0.5, 0.5, 0.6})  -- Moon color
+        love.graphics.circle("fill", 1120, 25, 8)
+        -- Moon shadow
+        love.graphics.setColor(btnColor)
+        love.graphics.circle("fill", 1116, 23, 6)
+    end
+
+    -- Button text
+    if canToggle then
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.print(btnText, 1135, 15)
+    else
+        love.graphics.setColor(0.6, 0.6, 0.6)
+        love.graphics.print("Wait " .. timeRemaining, 1135, 15)
     end
 
     -- Instructions
     love.graphics.setColor(1, 1, 1, 0.7)
     love.graphics.printf("Click a building to enter", 0, 680, 1280, "center")
+end
+
+-- Check if day/night button was clicked (and is enabled)
+function Town.getDayNightButtonAt(x, y, gameData, TimeSystem)
+    if not Components.isPointInRect(x, y, 1100, 8, 170, 34) then
+        return false
+    end
+
+    -- Check if toggle is currently allowed
+    local isNight = TimeSystem and TimeSystem.isNight(gameData) or false
+    local progress = gameData.dayProgress or 0
+
+    if isNight then
+        return progress >= 0.95  -- Can toggle at end of night
+    else
+        return progress >= 0.70  -- Can toggle at end of day
+    end
 end
 
 -- Get building ID at mouse position

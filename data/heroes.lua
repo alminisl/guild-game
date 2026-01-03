@@ -20,11 +20,11 @@ local function loadHeroData()
                 rankCost = {D = 50, C = 100, B = 200, A = 500, S = 1000},
                 baseRestTime = {D = 20, C = 15, B = 12, A = 8, S = 5},
                 baseStats = {
-                    D = {min = 3, max = 6},
-                    C = {min = 5, max = 9},
-                    B = {min = 8, max = 12},
-                    A = {min = 11, max = 15},
-                    S = {min = 14, max = 18}
+                    D = {min = 2, max = 5, cap = 10},
+                    C = {min = 3, max = 6, cap = 10},
+                    B = {min = 5, max = 8, cap = 10},
+                    A = {min = 10, max = 13, cap = 17},
+                    S = {min = 14, max = 17, cap = 20}
                 },
                 maxLevel = 10
             },
@@ -211,12 +211,15 @@ local function generateStats(rank, class, race)
     local data = loadHeroData()
     local baseStats = data.config.baseStats
 
-    local range = baseStats[rank] or {min = 3, max = 6}
+    local range = baseStats[rank] or {min = 3, max = 6, cap = 10}
     local classData = data.classes[class]
     local raceData = data.races[race]
 
     local classBonus = classData and classData.statBonus or {str = 0, dex = 0, int = 0, vit = 0, luck = 0}
     local raceBonus = raceData and raceData.statBonus or {str = 0, dex = 0, int = 0, vit = 0, luck = 0}
+
+    -- Get rank-specific stat cap (D/C/B max 10, A max 17, S max 20)
+    local statCap = range.cap or 10
 
     local stats = {
         str = math.random(range.min, range.max) + (classBonus.str or 0) + (raceBonus.str or 0),
@@ -226,9 +229,9 @@ local function generateStats(rank, class, race)
         luck = math.random(range.min, range.max) + (classBonus.luck or 0) + (raceBonus.luck or 0)
     }
 
-    -- Clamp stats to valid range
+    -- Clamp stats to rank-specific cap
     for stat, value in pairs(stats) do
-        stats[stat] = math.max(1, math.min(20, value))
+        stats[stat] = math.max(1, math.min(statCap, value))
     end
 
     return stats

@@ -186,6 +186,19 @@ function Quests.generate(rank, template)
     -- Generate secondary stat requirements for C+ rank quests
     local secondaryStats = generateSecondaryStats(template.requiredStat, rank, template.combat)
 
+    -- Determine max heroes based on rank
+    -- D/C: 2 heroes base, 3 if high reward quest
+    -- B: 3 heroes base, 4 if high reward
+    -- A/S: 4-6 heroes (no real limit)
+    local baseMaxHeroes = {D = 2, C = 2, B = 3, A = 4, S = 6}
+    local maxHeroes = baseMaxHeroes[rank] or 2
+
+    -- Higher reward quests can have +1 hero slot
+    local rewardThresholds = {D = 45, C = 80, B = 150, A = 350, S = 800}
+    if template.reward >= (rewardThresholds[rank] or 999) then
+        maxHeroes = maxHeroes + 1
+    end
+
     local quest = {
         id = nextQuestId,
         name = template.name,
@@ -201,6 +214,8 @@ function Quests.generate(rank, template)
         combat = template.combat or false,
         timeOfDay = template.timeOfDay or "any",
         possibleRewards = template.possibleRewards or {},
+        -- Hero limits
+        maxHeroes = maxHeroes,
         -- Death risk from config
         canKill = deathRisk.canKill,
         injuryOnly = deathRisk.injuryOnly,
