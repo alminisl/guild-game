@@ -1,0 +1,144 @@
+{
+    "synergies": [
+        {
+            "id": "cleric_protection",
+            "name": "Divine Protection",
+            "description": "Cleric prevents party death on A/S quests",
+            "requirements": {
+                "classes": ["Cleric", "Saint"],
+                "minCount": 1
+            },
+            "bonus": {
+                "deathProtection": true
+            },
+            "priority": 100
+        },
+        {
+            "id": "double_knight",
+            "name": "Shield Brothers",
+            "description": "+10% survival on combat quests",
+            "requirements": {
+                "classes": ["Knight", "Paladin"],
+                "minCount": 2
+            },
+            "bonus": {
+                "survivalBonus": 0.10
+            },
+            "priority": 50
+        },
+        {
+            "id": "double_mage",
+            "name": "Arcane Duo",
+            "description": "+15% success on INT quests",
+            "requirements": {
+                "classes": ["Mage", "Archmage"],
+                "minCount": 2
+            },
+            "bonus": {
+                "statBonus": {
+                    "int": 0.15
+                }
+            },
+            "priority": 50
+        },
+        {
+            "id": "rogue_ranger",
+            "name": "Treasure Seekers",
+            "description": "+25% material drop chance",
+            "requirements": {
+                "classes": ["Rogue", "Shadow", "Ranger", "Warden"],
+                "combination": ["Rogue|Shadow", "Ranger|Warden"]
+            },
+            "bonus": {
+                "dropBonus": 0.25
+            },
+            "priority": 50
+        },
+        {
+            "id": "mixed_party",
+            "name": "Versatile Team",
+            "description": "+5% all bonuses with 3+ different classes",
+            "requirements": {
+                "uniqueClasses": 3
+            },
+            "bonus": {
+                "allBonus": 0.05
+            },
+            "priority": 10
+        },
+        {
+            "id": "double_archer",
+            "name": "Crossfire",
+            "description": "+12% success on DEX quests",
+            "requirements": {
+                "classes": ["Archer", "Hawkeye"],
+                "minCount": 2
+            },
+            "bonus": {
+                "statBonus": {
+                    "dex": 0.12
+                }
+            },
+            "priority": 50
+        },
+        {
+            "id": "frontline",
+            "name": "Iron Front",
+            "description": "+8% success on STR combat quests",
+            "requirements": {
+                "classes": ["Knight", "Paladin"],
+                "minCount": 1,
+                "questType": "combat"
+            },
+            "bonus": {
+                "statBonus": {
+                    "str": 0.08
+                }
+            },
+            "priority": 30
+        },
+        {
+            "id": "healer_tank",
+            "name": "Guardian Angel",
+            "description": "+15% survival when Cleric + Knight",
+            "requirements": {
+                "combination": ["Cleric|Saint", "Knight|Paladin"]
+            },
+            "bonus": {
+                "survivalBonus": 0.15
+            },
+            "priority": 60
+        },
+        {
+            "id": "full_caster",
+            "name": "Spell Weave",
+            "description": "+20% success on INT quests with Mage + Cleric",
+            "requirements": {
+                "combination": ["Mage|Archmage", "Cleric|Saint"]
+            },
+            "bonus": {
+                "statBonus": {
+                    "int": 0.20
+                }
+            },
+            "priority": 55
+        },
+        {
+            "id": "scout_team",
+            "name": "Recon Unit",
+            "description": "-20% quest travel time",
+            "requirements": {
+                "classes": ["Ranger", "Warden", "Rogue", "Shadow"],
+                "minCount": 2
+            },
+            "bonus": {
+                "travelTimeReduction": 0.20
+            },
+            "priority": 40
+        }
+    ],
+    "config": {
+        "maxSynergiesDisplay": 3,
+        "stackable": false
+    }
+}

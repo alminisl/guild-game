@@ -1,0 +1,226 @@
+{
+    "config": {
+        "rankPower": {
+            "D": 1,
+            "C": 2,
+            "B": 3,
+            "A": 4,
+            "S": 5
+        },
+        "rankCost": {
+            "D": 50,
+            "C": 100,
+            "B": 200,
+            "A": 500,
+            "S": 1000
+        },
+        "baseRestTime": {
+            "D": 20,
+            "C": 15,
+            "B": 12,
+            "A": 8,
+            "S": 5
+        },
+        "baseStats": {
+            "D": { "min": 3, "max": 6 },
+            "C": { "min": 5, "max": 9 },
+            "B": { "min": 8, "max": 12 },
+            "A": { "min": 11, "max": 15 },
+            "S": { "min": 14, "max": 18 }
+        },
+        "guildLevelToHeroLevel": {
+            "1": { "min": 1, "max": 2 },
+            "2": { "min": 2, "max": 3 },
+            "3": { "min": 3, "max": 4 },
+            "4": { "min": 4, "max": 5 },
+            "5": { "min": 5, "max": 6 },
+            "6": { "min": 6, "max": 7 },
+            "7": { "min": 7, "max": 8 },
+            "8": { "min": 8, "max": 9 },
+            "9": { "min": 9, "max": 10 },
+            "10": { "min": 10, "max": 10 }
+        },
+        "maxLevel": 10
+    },
+    "classes": {
+        "Knight": {
+            "statBonus": { "str": 3, "dex": 0, "int": -1, "vit": 2, "luck": 0 },
+            "description": "Heavy armor, high defense",
+            "awakened": "Paladin",
+            "primaryStat": "str",
+            "skills": {
+                "5": { "id": "shield_wall", "name": "Shield Wall", "description": "+10% party survival chance in combat" },
+                "10": { "id": "last_stand", "name": "Last Stand", "description": "Cannot die on first failed combat quest" }
+            }
+        },
+        "Archer": {
+            "statBonus": { "str": 0, "dex": 3, "int": 0, "vit": 0, "luck": 1 },
+            "description": "Ranged attacks, high accuracy",
+            "awakened": "Hawkeye",
+            "primaryStat": "dex",
+            "skills": {
+                "5": { "id": "eagle_eye", "name": "Eagle Eye", "description": "+15% success on DEX-based quests" },
+                "10": { "id": "headshot", "name": "Headshot", "description": "+20% critical success chance" }
+            }
+        },
+        "Mage": {
+            "statBonus": { "str": -1, "dex": 0, "int": 4, "vit": -1, "luck": 1 },
+            "description": "Powerful magic, low defense",
+            "awakened": "Archmage",
+            "primaryStat": "int",
+            "skills": {
+                "5": { "id": "arcane_insight", "name": "Arcane Insight", "description": "+15% success on INT-based quests" },
+                "10": { "id": "teleport", "name": "Teleport", "description": "Reduces travel time by 50%" }
+            }
+        },
+        "Rogue": {
+            "statBonus": { "str": 1, "dex": 2, "int": 0, "vit": -1, "luck": 2 },
+            "description": "Fast and sneaky, critical hits",
+            "awakened": "Shadow",
+            "primaryStat": "dex",
+            "skills": {
+                "5": { "id": "treasure_hunter", "name": "Treasure Hunter", "description": "+25% gold from quests" },
+                "10": { "id": "escape_artist", "name": "Escape Artist", "description": "Cannot die from quest failures" }
+            }
+        },
+        "Cleric": {
+            "statBonus": { "str": 0, "dex": 0, "int": 2, "vit": 1, "luck": 1 },
+            "description": "Healing magic, support",
+            "awakened": "Saint",
+            "primaryStat": "int",
+            "skills": {
+                "5": { "id": "blessing", "name": "Blessing", "description": "Reduces party rest time by 25%" },
+                "10": { "id": "resurrect", "name": "Resurrect", "description": "Can resurrect one fallen hero from the graveyard" }
+            },
+            "special": {
+                "preventsPartyDeath": true,
+                "deathProtectionMessage": "Cleric's divine protection saved the party!"
+            }
+        },
+        "Ranger": {
+            "statBonus": { "str": 1, "dex": 2, "int": 0, "vit": 1, "luck": 0 },
+            "description": "Versatile, nature skills",
+            "awakened": "Warden",
+            "primaryStat": "dex",
+            "skills": {
+                "5": { "id": "forager", "name": "Forager", "description": "+25% material drops" },
+                "10": { "id": "beast_master", "name": "Beast Master", "description": "+1 party power when in party" }
+            }
+        },
+        "Paladin": {
+            "statBonus": { "str": 5, "dex": 1, "int": 2, "vit": 4, "luck": 2 },
+            "description": "Holy warrior, divine protection",
+            "isAwakened": true,
+            "baseClass": "Knight",
+            "primaryStat": "str"
+        },
+        "Hawkeye": {
+            "statBonus": { "str": 1, "dex": 6, "int": 1, "vit": 1, "luck": 3 },
+            "description": "Never misses, deadly precision",
+            "isAwakened": true,
+            "baseClass": "Archer",
+            "primaryStat": "dex"
+        },
+        "Archmage": {
+            "statBonus": { "str": -1, "dex": 1, "int": 7, "vit": 0, "luck": 3 },
+            "description": "Master of all magic",
+            "isAwakened": true,
+            "baseClass": "Mage",
+            "primaryStat": "int"
+        },
+        "Shadow": {
+            "statBonus": { "str": 2, "dex": 5, "int": 1, "vit": 0, "luck": 4 },
+            "description": "One with darkness, untouchable",
+            "isAwakened": true,
+            "baseClass": "Rogue",
+            "primaryStat": "dex"
+        },
+        "Saint": {
+            "statBonus": { "str": 1, "dex": 1, "int": 5, "vit": 3, "luck": 3 },
+            "description": "Divine healer, miracle worker",
+            "isAwakened": true,
+            "baseClass": "Cleric",
+            "primaryStat": "int",
+            "special": {
+                "preventsPartyDeath": true,
+                "deathProtectionMessage": "Saint's divine miracle saved the party!"
+            }
+        },
+        "Warden": {
+            "statBonus": { "str": 3, "dex": 4, "int": 2, "vit": 2, "luck": 2 },
+            "description": "Nature's champion, beast bond",
+            "isAwakened": true,
+            "baseClass": "Ranger",
+            "primaryStat": "dex"
+        }
+    },
+    "races": {
+        "Human": {
+            "statBonus": { "str": 0, "dex": 0, "int": 0, "vit": 0, "luck": 1 },
+            "description": "Versatile and adaptable",
+            "preferredClasses": ["Knight", "Archer", "Mage", "Rogue", "Cleric", "Ranger"],
+            "rarity": 30
+        },
+        "Dwarf": {
+            "statBonus": { "str": 2, "dex": -1, "int": 0, "vit": 2, "luck": 0 },
+            "description": "Sturdy mountain folk",
+            "preferredClasses": ["Knight", "Cleric"],
+            "rarity": 20
+        },
+        "Elf": {
+            "statBonus": { "str": -1, "dex": 2, "int": 2, "vit": -1, "luck": 1 },
+            "description": "Ancient and magical",
+            "preferredClasses": ["Mage", "Archer", "Cleric", "Ranger"],
+            "rarity": 15
+        },
+        "Halfling": {
+            "statBonus": { "str": -2, "dex": 3, "int": 0, "vit": 0, "luck": 3 },
+            "description": "Small but nimble",
+            "preferredClasses": ["Rogue", "Ranger", "Archer"],
+            "rarity": 15
+        },
+        "Orc": {
+            "statBonus": { "str": 4, "dex": 0, "int": -2, "vit": 2, "luck": -1 },
+            "description": "Fierce warriors",
+            "preferredClasses": ["Knight", "Ranger"],
+            "rarity": 10
+        },
+        "Gnome": {
+            "statBonus": { "str": -2, "dex": 1, "int": 3, "vit": -1, "luck": 2 },
+            "description": "Clever tinkerers",
+            "preferredClasses": ["Mage", "Rogue", "Cleric"],
+            "rarity": 10
+        }
+    },
+    "names": {
+        "firstNames": [
+            "Aldric", "Bran", "Cedric", "Darius", "Erik", "Finn", "Gareth", "Hugo",
+            "Ivan", "Jasper", "Klaus", "Leon", "Magnus", "Nolan", "Oscar", "Pierce",
+            "Quinn", "Roland", "Stefan", "Theron", "Ulric", "Viktor", "Wilhelm", "Xavier",
+            "Elena", "Aria", "Brynn", "Cora", "Diana", "Elara", "Freya", "Gwen",
+            "Helena", "Iris", "Jade", "Kira", "Luna", "Mira", "Nova", "Ophelia",
+            "Petra", "Rose", "Sera", "Thea", "Uma", "Vera", "Wren", "Zara",
+            "Ragnar", "Bjorn", "Sigurd", "Ingrid", "Astrid", "Thorin", "Gimli", "Balin",
+            "Legolas", "Arwen", "Galadriel", "Elrond", "Frodo", "Samwise", "Gandalf", "Bilbo"
+        ],
+        "lastNames": [
+            "Blackwood", "Ironforge", "Stormwind", "Shadowmere", "Brightblade", "Darkhollow",
+            "Fireborn", "Frostweaver", "Goldleaf", "Hawkeye", "Lightbringer", "Moonwhisper",
+            "Nightshade", "Oakenshield", "Proudfoot", "Quicksilver", "Ravencrest", "Silverhand",
+            "Thornwood", "Voidwalker", "Winterborn", "Starfall", "Dawnbringer", "Duskwalker",
+            "Stonefist", "Bloodaxe", "Flameheart", "Icevein", "Thunderforge", "Shadowbane",
+            "Sunweaver", "Moonshadow", "Stormbreaker", "Dragonslayer", "Wolfheart", "Bearkin"
+        ],
+        "titles": {
+            "A": ["Sir", "Lady", "Master", "Champion", "Veteran"],
+            "S": ["Legendary", "Grand Master", "Archmage", "Hero", "Mythic"]
+        }
+    },
+    "rankWeights": {
+        "D": 50,
+        "C": 30,
+        "B": 13,
+        "A": 6,
+        "S": 1
+    }
+}

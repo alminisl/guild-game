@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir /s /b \"C:\\\\Program Files\\\\love.exe\" \"C:\\\\Program Files \\(x86\\)\\\\love.exe\")",
+      "Bash(dir /s /b \"C:\\\\Program Files\")",
+      "Bash(findstr:*)",
+      "Bash(cmd /c \"dir /s /b \"\"C:\\\\Program Files\\\\love.exe\"\" 2>nul\")",
+      "Bash(cmd /c:*)",
+      "Bash(start \"\" \"C:\\\\Program Files\\\\LOVE\\\\love.exe\" \"F:\\\\MyGames\\\\LovePrototype\")",
+      "Bash(dir \"C:\\\\Program Files\\\\LOVE\")"
+    ]
+  }
+}

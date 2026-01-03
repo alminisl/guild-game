@@ -1,0 +1,834 @@
+{
+    "config": {
+        "rankPower": {
+            "D": 1,
+            "C": 2,
+            "B": 3,
+            "A": 4,
+            "S": 5
+        },
+        "timers": {
+            "D": { "travel": 3, "execute": 8, "return": 3 },
+            "C": { "travel": 5, "execute": 12, "return": 5 },
+            "B": { "travel": 7, "execute": 18, "return": 7 },
+            "A": { "travel": 10, "execute": 25, "return": 10 },
+            "S": { "travel": 15, "execute": 35, "return": 15 }
+        },
+        "expectedStats": {
+            "D": 5,
+            "C": 7,
+            "B": 10,
+            "A": 13,
+            "S": 16
+        },
+        "rankBonus": {
+            "D": 0.15,
+            "C": 0.05,
+            "B": 0,
+            "A": 0,
+            "S": 0
+        },
+        "deathRisk": {
+            "D": { "canKill": false, "injuryOnly": true, "deathChance": 0 },
+            "C": { "canKill": false, "injuryOnly": true, "deathChance": 0 },
+            "B": { "canKill": false, "injuryOnly": true, "deathChance": 0 },
+            "A": { "canKill": true, "injuryOnly": false, "deathChance": 0.3, "clericProtection": true },
+            "S": { "canKill": true, "injuryOnly": false, "deathChance": 0.5, "clericProtection": true }
+        },
+        "warnings": {
+            "A": "WARNING: A-rank quests are deadly! Heroes may die on failure unless a Cleric is in the party.",
+            "S": "DANGER: S-rank quests are extremely deadly! High chance of hero death on failure. Bring a Cleric!"
+        }
+    },
+    "templates": {
+        "D": [
+            {
+                "name": "Rat Cellar",
+                "description": "Clear the tavern's cellar of giant rats",
+                "reward": 30,
+                "xpReward": 20,
+                "requiredStat": "str",
+                "faction": "humans",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "leather_scrap", "amount": 2, "dropChance": 0.6 },
+                    { "type": "material", "id": "copper_ore", "amount": 1, "dropChance": 0.3 },
+                    { "type": "gold", "amount": 10, "dropChance": 0.4 }
+                ]
+            },
+            {
+                "name": "Lost Cat",
+                "description": "Find old Mrs. Henderson's missing cat",
+                "reward": 25,
+                "xpReward": 15,
+                "requiredStat": "dex",
+                "faction": "humans",
+                "combat": false,
+                "materialBonus": false,
+                "timeOfDay": "day",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 15, "dropChance": 0.5 },
+                    { "type": "item", "id": "minor_healing_potion", "amount": 1, "dropChance": 0.2 }
+                ]
+            },
+            {
+                "name": "Herb Gathering",
+                "description": "Collect medicinal herbs from the elven forest",
+                "reward": 35,
+                "xpReward": 20,
+                "requiredStat": "int",
+                "faction": "elves",
+                "combat": false,
+                "materialBonus": false,
+                "timeOfDay": "day",
+                "possibleRewards": [
+                    { "type": "material", "id": "leather_scrap", "amount": 1, "dropChance": 0.4 },
+                    { "type": "item", "id": "minor_healing_potion", "amount": 1, "dropChance": 0.35 },
+                    { "type": "item", "id": "antidote", "amount": 1, "dropChance": 0.25 }
+                ]
+            },
+            {
+                "name": "Mine Inspection",
+                "description": "Check the upper mine tunnels for cave-ins",
+                "reward": 30,
+                "xpReward": 20,
+                "requiredStat": "str",
+                "faction": "dwarfs",
+                "combat": false,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "copper_ore", "amount": 3, "dropChance": 0.7 },
+                    { "type": "material", "id": "rough_stone", "amount": 2, "dropChance": 0.6 },
+                    { "type": "material", "id": "iron_ingot", "amount": 1, "dropChance": 0.15 }
+                ]
+            },
+            {
+                "name": "Crystal Cavern",
+                "description": "Explore the crystal caves near town",
+                "reward": 35,
+                "xpReward": 20,
+                "requiredStat": "dex",
+                "faction": "dwarfs",
+                "combat": false,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "rough_stone", "amount": 3, "dropChance": 0.65 },
+                    { "type": "material", "id": "copper_ore", "amount": 2, "dropChance": 0.5 },
+                    { "type": "material", "id": "enchanted_gem", "amount": 1, "dropChance": 0.05 }
+                ]
+            },
+            {
+                "name": "Old Mine Cleanup",
+                "description": "Clear pests from an abandoned mineshaft",
+                "reward": 30,
+                "xpReward": 18,
+                "requiredStat": "str",
+                "faction": "dwarfs",
+                "combat": true,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "copper_ore", "amount": 2, "dropChance": 0.6 },
+                    { "type": "material", "id": "leather_scrap", "amount": 2, "dropChance": 0.5 },
+                    { "type": "material", "id": "iron_ingot", "amount": 1, "dropChance": 0.1 }
+                ]
+            },
+            {
+                "name": "Arena Training",
+                "description": "Spar with orc warriors for their amusement",
+                "reward": 35,
+                "xpReward": 25,
+                "requiredStat": "str",
+                "faction": "orcs",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "leather_scrap", "amount": 2, "dropChance": 0.5 },
+                    { "type": "gold", "amount": 20, "dropChance": 0.3 },
+                    { "type": "equipment", "id": "rusty_sword", "amount": 1, "dropChance": 0.1 }
+                ]
+            },
+            {
+                "name": "Graveyard Watch",
+                "description": "Guard the cemetery against grave robbers",
+                "reward": 40,
+                "xpReward": 25,
+                "requiredStat": "vit",
+                "faction": "humans",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "night",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 25, "dropChance": 0.5 },
+                    { "type": "material", "id": "rough_stone", "amount": 2, "dropChance": 0.4 },
+                    { "type": "item", "id": "minor_healing_potion", "amount": 1, "dropChance": 0.25 }
+                ]
+            },
+            {
+                "name": "Moonlit Herbs",
+                "description": "Gather rare herbs that only bloom at night",
+                "reward": 45,
+                "xpReward": 22,
+                "requiredStat": "int",
+                "faction": "elves",
+                "combat": false,
+                "materialBonus": false,
+                "timeOfDay": "night",
+                "possibleRewards": [
+                    { "type": "item", "id": "minor_healing_potion", "amount": 2, "dropChance": 0.5 },
+                    { "type": "item", "id": "antidote", "amount": 1, "dropChance": 0.4 },
+                    { "type": "material", "id": "enchanted_gem", "amount": 1, "dropChance": 0.08 }
+                ]
+            },
+            {
+                "name": "Morning Patrol",
+                "description": "Patrol the village perimeter at dawn",
+                "reward": 28,
+                "xpReward": 18,
+                "requiredStat": "dex",
+                "faction": "humans",
+                "combat": false,
+                "materialBonus": false,
+                "timeOfDay": "day",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 12, "dropChance": 0.6 },
+                    { "type": "material", "id": "leather_scrap", "amount": 1, "dropChance": 0.3 }
+                ]
+            }
+        ],
+        "C": [
+            {
+                "name": "Goblin Camp",
+                "description": "Clear a goblin camp threatening the trade route",
+                "reward": 80,
+                "xpReward": 50,
+                "requiredStat": "str",
+                "faction": "humans",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 40, "dropChance": 0.6 },
+                    { "type": "material", "id": "leather_scrap", "amount": 3, "dropChance": 0.5 },
+                    { "type": "material", "id": "iron_ingot", "amount": 1, "dropChance": 0.25 },
+                    { "type": "equipment", "id": "rusty_sword", "amount": 1, "dropChance": 0.15 }
+                ]
+            },
+            {
+                "name": "Escort Merchant",
+                "description": "Protect a merchant traveling to the capital",
+                "reward": 100,
+                "xpReward": 60,
+                "requiredStat": "dex",
+                "faction": "humans",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "day",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 50, "dropChance": 0.7 },
+                    { "type": "item", "id": "minor_healing_potion", "amount": 2, "dropChance": 0.4 },
+                    { "type": "equipment", "id": "leather_vest", "amount": 1, "dropChance": 0.1 }
+                ]
+            },
+            {
+                "name": "Forest Spirits",
+                "description": "Appease the restless spirits in the ancient grove",
+                "reward": 90,
+                "xpReward": 55,
+                "requiredStat": "int",
+                "faction": "elves",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "enchanted_gem", "amount": 1, "dropChance": 0.2 },
+                    { "type": "item", "id": "minor_healing_potion", "amount": 2, "dropChance": 0.45 },
+                    { "type": "equipment", "id": "apprentice_staff", "amount": 1, "dropChance": 0.1 }
+                ]
+            },
+            {
+                "name": "Forge Guardian",
+                "description": "Defeat the construct guarding an abandoned forge",
+                "reward": 95,
+                "xpReward": 55,
+                "requiredStat": "str",
+                "faction": "dwarfs",
+                "combat": true,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "iron_ingot", "amount": 3, "dropChance": 0.65 },
+                    { "type": "material", "id": "steel_bar", "amount": 1, "dropChance": 0.25 },
+                    { "type": "equipment", "id": "iron_sword", "amount": 1, "dropChance": 0.12 }
+                ]
+            },
+            {
+                "name": "Underground Stream",
+                "description": "Map the newly discovered underground river",
+                "reward": 85,
+                "xpReward": 50,
+                "requiredStat": "int",
+                "faction": "dwarfs",
+                "combat": false,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "copper_ore", "amount": 4, "dropChance": 0.6 },
+                    { "type": "material", "id": "iron_ingot", "amount": 2, "dropChance": 0.4 },
+                    { "type": "material", "id": "enchanted_gem", "amount": 1, "dropChance": 0.15 }
+                ]
+            },
+            {
+                "name": "Lost Mining Cart",
+                "description": "Recover a cart full of ore from collapsed tunnels",
+                "reward": 90,
+                "xpReward": 55,
+                "requiredStat": "str",
+                "faction": "dwarfs",
+                "combat": false,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "iron_ingot", "amount": 3, "dropChance": 0.7 },
+                    { "type": "material", "id": "copper_ore", "amount": 4, "dropChance": 0.6 },
+                    { "type": "material", "id": "steel_bar", "amount": 1, "dropChance": 0.2 }
+                ]
+            },
+            {
+                "name": "Warchief's Trial",
+                "description": "Complete a trial of combat for the orc warchief",
+                "reward": 85,
+                "xpReward": 50,
+                "requiredStat": "str",
+                "faction": "orcs",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 45, "dropChance": 0.5 },
+                    { "type": "material", "id": "leather_scrap", "amount": 3, "dropChance": 0.55 },
+                    { "type": "equipment", "id": "iron_sword", "amount": 1, "dropChance": 0.15 }
+                ]
+            },
+            {
+                "name": "Werewolf Hunt",
+                "description": "Track and slay the werewolf terrorizing farms",
+                "reward": 120,
+                "xpReward": 70,
+                "requiredStat": "dex",
+                "faction": "humans",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "night",
+                "possibleRewards": [
+                    { "type": "material", "id": "quality_leather", "amount": 2, "dropChance": 0.6 },
+                    { "type": "gold", "amount": 60, "dropChance": 0.5 },
+                    { "type": "equipment", "id": "wooden_bow", "amount": 1, "dropChance": 0.15 }
+                ]
+            },
+            {
+                "name": "Smuggler's Cove",
+                "description": "Intercept smugglers under cover of darkness",
+                "reward": 110,
+                "xpReward": 65,
+                "requiredStat": "dex",
+                "faction": "humans",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "night",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 80, "dropChance": 0.65 },
+                    { "type": "item", "id": "minor_healing_potion", "amount": 3, "dropChance": 0.4 },
+                    { "type": "equipment", "id": "lucky_charm", "amount": 1, "dropChance": 0.12 }
+                ]
+            },
+            {
+                "name": "Sunlit Ritual",
+                "description": "Protect elven priests during a sacred day ritual",
+                "reward": 95,
+                "xpReward": 58,
+                "requiredStat": "int",
+                "faction": "elves",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "day",
+                "possibleRewards": [
+                    { "type": "material", "id": "enchanted_gem", "amount": 1, "dropChance": 0.3 },
+                    { "type": "gold", "amount": 40, "dropChance": 0.5 },
+                    { "type": "item", "id": "minor_healing_potion", "amount": 2, "dropChance": 0.45 }
+                ]
+            }
+        ],
+        "B": [
+            {
+                "name": "Bandit Hideout",
+                "description": "Assault the bandit fortress in the mountains",
+                "reward": 200,
+                "xpReward": 120,
+                "requiredStat": "str",
+                "faction": "humans",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 100, "dropChance": 0.7 },
+                    { "type": "material", "id": "steel_bar", "amount": 2, "dropChance": 0.4 },
+                    { "type": "equipment", "id": "steel_blade", "amount": 1, "dropChance": 0.1 },
+                    { "type": "item", "id": "healing_potion", "amount": 1, "dropChance": 0.35 }
+                ]
+            },
+            {
+                "name": "Rival Clan War",
+                "description": "Fight alongside orcs against a rival clan",
+                "reward": 220,
+                "xpReward": 130,
+                "requiredStat": "str",
+                "faction": "orcs",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 90, "dropChance": 0.6 },
+                    { "type": "material", "id": "quality_leather", "amount": 3, "dropChance": 0.5 },
+                    { "type": "equipment", "id": "iron_chainmail", "amount": 1, "dropChance": 0.12 }
+                ]
+            },
+            {
+                "name": "Cursed Ruins",
+                "description": "Explore ancient elven ruins and lift the curse",
+                "reward": 250,
+                "xpReward": 150,
+                "requiredStat": "int",
+                "faction": "elves",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "enchanted_gem", "amount": 2, "dropChance": 0.45 },
+                    { "type": "gold", "amount": 120, "dropChance": 0.5 },
+                    { "type": "equipment", "id": "ring_of_fortune", "amount": 1, "dropChance": 0.08 }
+                ]
+            },
+            {
+                "name": "Troll Bridge",
+                "description": "Defeat the troll blocking the mountain pass",
+                "reward": 180,
+                "xpReward": 100,
+                "requiredStat": "str",
+                "faction": "dwarfs",
+                "combat": true,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "iron_ingot", "amount": 4, "dropChance": 0.65 },
+                    { "type": "material", "id": "steel_bar", "amount": 2, "dropChance": 0.4 },
+                    { "type": "gold", "amount": 80, "dropChance": 0.5 }
+                ]
+            },
+            {
+                "name": "Deep Mine Rescue",
+                "description": "Rescue trapped miners from a collapsed tunnel",
+                "reward": 230,
+                "xpReward": 140,
+                "requiredStat": "str",
+                "faction": "dwarfs",
+                "combat": false,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "iron_ingot", "amount": 5, "dropChance": 0.7 },
+                    { "type": "material", "id": "steel_bar", "amount": 2, "dropChance": 0.5 },
+                    { "type": "material", "id": "mithril_shard", "amount": 1, "dropChance": 0.1 }
+                ]
+            },
+            {
+                "name": "Ancient Vault",
+                "description": "Breach the sealed dwarven vault beneath the mountain",
+                "reward": 240,
+                "xpReward": 145,
+                "requiredStat": "int",
+                "faction": "dwarfs",
+                "combat": true,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 150, "dropChance": 0.6 },
+                    { "type": "material", "id": "steel_bar", "amount": 3, "dropChance": 0.55 },
+                    { "type": "material", "id": "mithril_shard", "amount": 1, "dropChance": 0.15 },
+                    { "type": "equipment", "id": "steel_plate", "amount": 1, "dropChance": 0.08 }
+                ]
+            },
+            {
+                "name": "Lava Cavern Beast",
+                "description": "Hunt the creature dwelling in the volcanic caves",
+                "reward": 210,
+                "xpReward": 125,
+                "requiredStat": "str",
+                "faction": "dwarfs",
+                "combat": true,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "steel_bar", "amount": 3, "dropChance": 0.6 },
+                    { "type": "material", "id": "dragon_scale", "amount": 1, "dropChance": 0.12 },
+                    { "type": "gold", "amount": 100, "dropChance": 0.45 }
+                ]
+            },
+            {
+                "name": "Vampire Nest",
+                "description": "Destroy the vampire coven before dawn",
+                "reward": 280,
+                "xpReward": 160,
+                "requiredStat": "str",
+                "faction": "humans",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "night",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 140, "dropChance": 0.65 },
+                    { "type": "material", "id": "enchanted_gem", "amount": 2, "dropChance": 0.4 },
+                    { "type": "item", "id": "phoenix_feather", "amount": 1, "dropChance": 0.05 }
+                ]
+            },
+            {
+                "name": "Shadow Cult",
+                "description": "Disrupt the dark ritual in the abandoned temple",
+                "reward": 260,
+                "xpReward": 155,
+                "requiredStat": "int",
+                "faction": "elves",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "night",
+                "possibleRewards": [
+                    { "type": "material", "id": "enchanted_gem", "amount": 3, "dropChance": 0.55 },
+                    { "type": "gold", "amount": 130, "dropChance": 0.5 },
+                    { "type": "equipment", "id": "ring_of_fortune", "amount": 1, "dropChance": 0.1 }
+                ]
+            },
+            {
+                "name": "Dawn Assault",
+                "description": "Lead a surprise attack on the enemy camp at sunrise",
+                "reward": 245,
+                "xpReward": 148,
+                "requiredStat": "str",
+                "faction": "orcs",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "day",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 120, "dropChance": 0.6 },
+                    { "type": "material", "id": "quality_leather", "amount": 4, "dropChance": 0.55 },
+                    { "type": "equipment", "id": "steel_blade", "amount": 1, "dropChance": 0.12 }
+                ]
+            }
+        ],
+        "A": [
+            {
+                "name": "Dragon Hunt",
+                "description": "Slay the young dragon terrorizing the kingdom",
+                "reward": 500,
+                "xpReward": 300,
+                "requiredStat": "str",
+                "faction": "humans",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "dragon_scale", "amount": 3, "dropChance": 0.7 },
+                    { "type": "gold", "amount": 250, "dropChance": 0.6 },
+                    { "type": "equipment", "id": "mithril_sword", "amount": 1, "dropChance": 0.1 },
+                    { "type": "item", "id": "greater_healing_potion", "amount": 2, "dropChance": 0.45 }
+                ]
+            },
+            {
+                "name": "Demon Gate",
+                "description": "Close a portal leaking demons into our world",
+                "reward": 550,
+                "xpReward": 350,
+                "requiredStat": "int",
+                "faction": "elves",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "enchanted_gem", "amount": 4, "dropChance": 0.65 },
+                    { "type": "gold", "amount": 280, "dropChance": 0.55 },
+                    { "type": "item", "id": "phoenix_feather", "amount": 1, "dropChance": 0.1 }
+                ]
+            },
+            {
+                "name": "Lich's Tower",
+                "description": "Storm the tower of a powerful undead mage",
+                "reward": 600,
+                "xpReward": 380,
+                "requiredStat": "int",
+                "faction": "humans",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 300, "dropChance": 0.6 },
+                    { "type": "material", "id": "enchanted_gem", "amount": 3, "dropChance": 0.55 },
+                    { "type": "equipment", "id": "champions_amulet", "amount": 1, "dropChance": 0.08 },
+                    { "type": "item", "id": "phoenix_feather", "amount": 1, "dropChance": 0.12 }
+                ]
+            },
+            {
+                "name": "Mountain King",
+                "description": "Aid the dwarven king against an ancient threat",
+                "reward": 480,
+                "xpReward": 280,
+                "requiredStat": "str",
+                "faction": "dwarfs",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 240, "dropChance": 0.65 },
+                    { "type": "material", "id": "mithril_shard", "amount": 2, "dropChance": 0.5 },
+                    { "type": "equipment", "id": "mithril_armor", "amount": 1, "dropChance": 0.08 }
+                ]
+            },
+            {
+                "name": "Warlord's Champion",
+                "description": "Serve as champion in the orc grand tournament",
+                "reward": 520,
+                "xpReward": 320,
+                "requiredStat": "str",
+                "faction": "orcs",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 260, "dropChance": 0.7 },
+                    { "type": "material", "id": "quality_leather", "amount": 5, "dropChance": 0.6 },
+                    { "type": "equipment", "id": "mithril_sword", "amount": 1, "dropChance": 0.1 }
+                ]
+            },
+            {
+                "name": "Mithril Vein",
+                "description": "Secure the newly discovered mithril deposit",
+                "reward": 550,
+                "xpReward": 340,
+                "requiredStat": "str",
+                "faction": "dwarfs",
+                "combat": true,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "mithril_shard", "amount": 4, "dropChance": 0.75 },
+                    { "type": "material", "id": "steel_bar", "amount": 4, "dropChance": 0.6 },
+                    { "type": "gold", "amount": 200, "dropChance": 0.5 }
+                ]
+            },
+            {
+                "name": "Underdark Gateway",
+                "description": "Seal the passage to the deep underground",
+                "reward": 520,
+                "xpReward": 310,
+                "requiredStat": "int",
+                "faction": "dwarfs",
+                "combat": true,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "mithril_shard", "amount": 3, "dropChance": 0.65 },
+                    { "type": "material", "id": "enchanted_gem", "amount": 2, "dropChance": 0.5 },
+                    { "type": "equipment", "id": "ring_of_fortune", "amount": 1, "dropChance": 0.12 }
+                ]
+            },
+            {
+                "name": "Nightmare Lord",
+                "description": "Slay the demon that haunts the realm's dreams",
+                "reward": 650,
+                "xpReward": 400,
+                "requiredStat": "int",
+                "faction": "elves",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "night",
+                "possibleRewards": [
+                    { "type": "material", "id": "enchanted_gem", "amount": 4, "dropChance": 0.7 },
+                    { "type": "gold", "amount": 320, "dropChance": 0.6 },
+                    { "type": "item", "id": "phoenix_feather", "amount": 1, "dropChance": 0.15 },
+                    { "type": "equipment", "id": "champions_amulet", "amount": 1, "dropChance": 0.1 }
+                ]
+            },
+            {
+                "name": "Blood Moon Ritual",
+                "description": "Stop the dark wizards during the blood moon",
+                "reward": 620,
+                "xpReward": 380,
+                "requiredStat": "int",
+                "faction": "humans",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "night",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 310, "dropChance": 0.65 },
+                    { "type": "material", "id": "enchanted_gem", "amount": 3, "dropChance": 0.55 },
+                    { "type": "item", "id": "phoenix_feather", "amount": 1, "dropChance": 0.12 }
+                ]
+            },
+            {
+                "name": "Solar Eclipse",
+                "description": "Perform the ancient ritual during the rare eclipse",
+                "reward": 580,
+                "xpReward": 360,
+                "requiredStat": "int",
+                "faction": "elves",
+                "combat": false,
+                "materialBonus": false,
+                "timeOfDay": "day",
+                "possibleRewards": [
+                    { "type": "material", "id": "enchanted_gem", "amount": 5, "dropChance": 0.7 },
+                    { "type": "gold", "amount": 290, "dropChance": 0.55 },
+                    { "type": "item", "id": "phoenix_feather", "amount": 1, "dropChance": 0.1 }
+                ]
+            }
+        ],
+        "S": [
+            {
+                "name": "Ancient Evil",
+                "description": "Seal away the awakened elder god",
+                "reward": 1200,
+                "xpReward": 800,
+                "requiredStat": "int",
+                "faction": "elves",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "enchanted_gem", "amount": 6, "dropChance": 0.8 },
+                    { "type": "gold", "amount": 600, "dropChance": 0.7 },
+                    { "type": "item", "id": "phoenix_feather", "amount": 2, "dropChance": 0.3 },
+                    { "type": "equipment", "id": "champions_amulet", "amount": 1, "dropChance": 0.15 }
+                ]
+            },
+            {
+                "name": "Titan Awakens",
+                "description": "Stop the primordial titan from destroying the realm",
+                "reward": 1500,
+                "xpReward": 1000,
+                "requiredStat": "str",
+                "faction": "dwarfs",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "mithril_shard", "amount": 5, "dropChance": 0.75 },
+                    { "type": "material", "id": "dragon_scale", "amount": 4, "dropChance": 0.6 },
+                    { "type": "gold", "amount": 750, "dropChance": 0.7 },
+                    { "type": "equipment", "id": "mithril_armor", "amount": 1, "dropChance": 0.12 }
+                ]
+            },
+            {
+                "name": "Warlord Ascension",
+                "description": "Lead the orc united clans against the demon army",
+                "reward": 1300,
+                "xpReward": 850,
+                "requiredStat": "str",
+                "faction": "orcs",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 650, "dropChance": 0.75 },
+                    { "type": "material", "id": "dragon_scale", "amount": 3, "dropChance": 0.55 },
+                    { "type": "equipment", "id": "mithril_sword", "amount": 1, "dropChance": 0.15 },
+                    { "type": "item", "id": "phoenix_feather", "amount": 1, "dropChance": 0.25 }
+                ]
+            },
+            {
+                "name": "Kingdom's Last Stand",
+                "description": "Defend the human capital from the dark invasion",
+                "reward": 1400,
+                "xpReward": 900,
+                "requiredStat": "str",
+                "faction": "humans",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 700, "dropChance": 0.75 },
+                    { "type": "material", "id": "steel_bar", "amount": 6, "dropChance": 0.65 },
+                    { "type": "equipment", "id": "mithril_armor", "amount": 1, "dropChance": 0.1 },
+                    { "type": "item", "id": "phoenix_feather", "amount": 2, "dropChance": 0.2 }
+                ]
+            },
+            {
+                "name": "Heart of the Mountain",
+                "description": "Reach the legendary core of the ancient mountain",
+                "reward": 1350,
+                "xpReward": 880,
+                "requiredStat": "str",
+                "faction": "dwarfs",
+                "combat": true,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "mithril_shard", "amount": 6, "dropChance": 0.8 },
+                    { "type": "material", "id": "enchanted_gem", "amount": 4, "dropChance": 0.65 },
+                    { "type": "gold", "amount": 500, "dropChance": 0.6 }
+                ]
+            },
+            {
+                "name": "Dragon's Hoard",
+                "description": "Claim treasures from an ancient dragon's lair",
+                "reward": 1450,
+                "xpReward": 950,
+                "requiredStat": "str",
+                "faction": "dwarfs",
+                "combat": true,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "possibleRewards": [
+                    { "type": "material", "id": "dragon_scale", "amount": 5, "dropChance": 0.8 },
+                    { "type": "gold", "amount": 800, "dropChance": 0.75 },
+                    { "type": "material", "id": "mithril_shard", "amount": 4, "dropChance": 0.6 },
+                    { "type": "equipment", "id": "champions_amulet", "amount": 1, "dropChance": 0.15 }
+                ]
+            },
+            {
+                "name": "Eternal Night",
+                "description": "Defeat the Dark God attempting to blot out the sun forever",
+                "reward": 1800,
+                "xpReward": 1100,
+                "requiredStat": "int",
+                "faction": "elves",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "night",
+                "possibleRewards": [
+                    { "type": "material", "id": "enchanted_gem", "amount": 8, "dropChance": 0.85 },
+                    { "type": "gold", "amount": 900, "dropChance": 0.8 },
+                    { "type": "item", "id": "phoenix_feather", "amount": 2, "dropChance": 0.35 },
+                    { "type": "equipment", "id": "champions_amulet", "amount": 1, "dropChance": 0.2 }
+                ]
+            },
+            {
+                "name": "Dawn of Heroes",
+                "description": "Lead the final charge against darkness as the sun rises",
+                "reward": 1600,
+                "xpReward": 1000,
+                "requiredStat": "str",
+                "faction": "humans",
+                "combat": true,
+                "materialBonus": false,
+                "timeOfDay": "day",
+                "possibleRewards": [
+                    { "type": "gold", "amount": 850, "dropChance": 0.8 },
+                    { "type": "material", "id": "mithril_shard", "amount": 4, "dropChance": 0.65 },
+                    { "type": "equipment", "id": "mithril_sword", "amount": 1, "dropChance": 0.18 },
+                    { "type": "item", "id": "phoenix_feather", "amount": 2, "dropChance": 0.3 }
+                ]
+            }
+        ]
+    }
+}
