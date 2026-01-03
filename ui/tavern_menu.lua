@@ -2,6 +2,7 @@
 -- UI for hiring heroes
 
 local Components = require("ui.components")
+local SpriteSystem = require("systems.sprite_system")
 
 local TavernMenu = {}
 
@@ -40,7 +41,7 @@ function TavernMenu.draw(gameData, Economy, GuildSystem)
 
     -- Heroes for hire
     local startY = MENU.y + 80
-    local cardHeight = 90
+    local cardHeight = 110
     local cardWidth = MENU.width - 40
 
     if #gameData.tavernPool == 0 then
@@ -56,19 +57,25 @@ function TavernMenu.draw(gameData, Economy, GuildSystem)
                 cornerRadius = 5
             })
 
-            -- Rank badge
-            Components.drawRankBadge(hero.rank, MENU.x + 30, y + 10, 36)
+            -- Hero sprite portrait (much larger to compensate for sprite padding)
+            local spriteX = MENU.x + 80
+            local spriteY = y + cardHeight / 2
+            SpriteSystem.drawCentered(hero, spriteX, spriteY, 264, 264, "Idle")
 
-            -- Hero info
+            -- Hero info (shifted right for bigger sprite)
             love.graphics.setColor(Components.colors.text)
-            love.graphics.print(hero.name, MENU.x + 80, y + 10)
+            love.graphics.print(hero.name, MENU.x + 155, y + 10)
 
             love.graphics.setColor(Components.colors.textDim)
-            love.graphics.print((hero.race or "Human") .. " " .. hero.class .. " - Lv." .. hero.level, MENU.x + 80, y + 30)
-            love.graphics.print("Power: " .. hero.power, MENU.x + 80, y + 50)
+            love.graphics.print((hero.race or "Human") .. " " .. hero.class .. " - Lv." .. hero.level, MENU.x + 155, y + 30)
 
-            -- Stats preview
-            local statsX = MENU.x + 280
+            -- Rank and Power on same line
+            love.graphics.setColor(Components.colors.warning)
+            love.graphics.print("Rank: " .. hero.rank, MENU.x + 155, y + 50)
+            love.graphics.print("Power: " .. hero.power, MENU.x + 235, y + 50)
+
+            -- Stats preview (shifted for bigger sprite)
+            local statsX = MENU.x + 340
             love.graphics.setColor(Components.colors.textDim)
             love.graphics.print(string.format("STR:%d DEX:%d INT:%d",
                 hero.stats.str, hero.stats.dex, hero.stats.int), statsX, y + 30)

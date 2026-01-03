@@ -83,7 +83,7 @@
                 "10": { "id": "escape_artist", "name": "Escape Artist", "description": "Cannot die from quest failures" }
             }
         },
-        "Cleric": {
+        "Priest": {
             "statBonus": { "str": 0, "dex": 0, "int": 2, "vit": 1, "luck": 1 },
             "description": "Healing magic, support",
             "awakened": "Saint",
@@ -94,7 +94,7 @@
             },
             "special": {
                 "preventsPartyDeath": true,
-                "deathProtectionMessage": "Cleric's divine protection saved the party!"
+                "deathProtectionMessage": "Priest's divine protection saved the party!"
             }
         },
         "Ranger": {
@@ -139,7 +139,7 @@
             "statBonus": { "str": 1, "dex": 1, "int": 5, "vit": 3, "luck": 3 },
             "description": "Divine healer, miracle worker",
             "isAwakened": true,
-            "baseClass": "Cleric",
+            "baseClass": "Priest",
             "primaryStat": "int",
             "special": {
                 "preventsPartyDeath": true,
@@ -158,19 +158,19 @@
         "Human": {
             "statBonus": { "str": 0, "dex": 0, "int": 0, "vit": 0, "luck": 1 },
             "description": "Versatile and adaptable",
-            "preferredClasses": ["Knight", "Archer", "Mage", "Rogue", "Cleric", "Ranger"],
+            "preferredClasses": ["Knight", "Archer", "Mage", "Rogue", "Priest", "Ranger"],
             "rarity": 30
         },
         "Dwarf": {
             "statBonus": { "str": 2, "dex": -1, "int": 0, "vit": 2, "luck": 0 },
             "description": "Sturdy mountain folk",
-            "preferredClasses": ["Knight", "Cleric"],
+            "preferredClasses": ["Knight", "Priest"],
             "rarity": 20
         },
         "Elf": {
             "statBonus": { "str": -1, "dex": 2, "int": 2, "vit": -1, "luck": 1 },
             "description": "Ancient and magical",
-            "preferredClasses": ["Mage", "Archer", "Cleric", "Ranger"],
+            "preferredClasses": ["Mage", "Archer", "Priest", "Ranger"],
             "rarity": 15
         },
         "Halfling": {
@@ -188,7 +188,7 @@
         "Gnome": {
             "statBonus": { "str": -2, "dex": 1, "int": 3, "vit": -1, "luck": 2 },
             "description": "Clever tinkerers",
-            "preferredClasses": ["Mage", "Rogue", "Cleric"],
+            "preferredClasses": ["Mage", "Rogue", "Priest"],
             "rarity": 10
         }
     },

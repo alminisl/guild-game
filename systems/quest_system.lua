@@ -3,6 +3,9 @@
 
 local QuestSystem = {}
 
+-- Load EquipmentSystem for mount calculations
+local EquipmentSystem = require("systems.equipment_system")
+
 -- Assign heroes to a quest (starts the quest)
 function QuestSystem.assignParty(quest, heroes, gameData)
     if quest.status ~= "available" then
@@ -29,6 +32,16 @@ function QuestSystem.assignParty(quest, heroes, gameData)
         return false, "Party power (" .. partyPower .. ") is less than required (" .. quest.requiredPower .. ")"
     end
 
+    -- Calculate travel speed based on party mounts
+    local travelMultiplier = EquipmentSystem.getPartyTravelSpeed(heroes)
+    local adjustedTravelTime = math.floor(quest.travelTime * travelMultiplier)
+    local adjustedReturnTime = math.floor(quest.returnTime * travelMultiplier)
+
+    -- Store adjusted times on the quest
+    quest.actualTravelTime = adjustedTravelTime
+    quest.actualReturnTime = adjustedReturnTime
+    quest.travelSpeedMultiplier = travelMultiplier
+
     -- Assign heroes to quest
     quest.assignedHeroes = {}
     for _, hero in ipairs(heroes) do
@@ -37,7 +50,7 @@ function QuestSystem.assignParty(quest, heroes, gameData)
         hero.currentQuestId = quest.id
         hero.questPhase = "travel"
         hero.questProgress = 0
-        hero.questPhaseMax = quest.travelTime
+        hero.questPhaseMax = adjustedTravelTime
     end
 
     quest.status = "active"
@@ -80,7 +93,7 @@ function QuestSystem.update(gameData, dt, Heroes, Quests, Economy, GuildSystem, 
         local phaseMax = 0
 
         if quest.currentPhase == "travel" then
-            phaseMax = quest.travelTime
+            phaseMax = quest.actualTravelTime or quest.travelTime
             if quest.phaseProgress >= phaseMax then
                 phaseComplete = true
                 quest.currentPhase = "execute"
@@ -109,12 +122,12 @@ function QuestSystem.update(gameData, dt, Heroes, Quests, Economy, GuildSystem, 
                         hero.status = "returning"
                         hero.questPhase = "return"
                         hero.questProgress = 0
-                        hero.questPhaseMax = quest.returnTime
+                        hero.questPhaseMax = quest.actualReturnTime or quest.returnTime
                     end
                 end
             end
         elseif quest.currentPhase == "return" then
-            phaseMax = quest.returnTime
+            phaseMax = quest.actualReturnTime or quest.returnTime
             if quest.phaseProgress >= phaseMax then
                 -- Quest complete - resolve it
                 local heroList = QuestSystem.getQuestHeroes(quest, gameData)
@@ -135,15 +148,19 @@ function QuestSystem.update(gameData, dt, Heroes, Quests, Economy, GuildSystem, 
                         result.message = result.message .. " " .. hero.name .. " leveled up!"
                     end
 
-                    -- Check for death on failed COMBAT quests
+                    -- Check for death on failed COMBAT quests (A/S rank ONLY)
                     local shouldDie = false
                     if not result.success and quest.combat then
-                        -- Combat quest failure - chance of death based on quest rank
-                        local deathChance = {D = 0.1, C = 0.15, B = 0.2, A = 0.3, S = 0.4}
-                        local roll = math.random()
-                        if roll < (deathChance[quest.rank] or 0.1) then
-                            shouldDie = true
+                        -- Only A/S rank combat quest failures can cause death
+                        local deathChance = {A = 0.30, S = 0.50}
+                        local chance = deathChance[quest.rank]
+                        if chance then
+                            local roll = math.random()
+                            if roll < chance then
+                                shouldDie = true
+                            end
                         end
+                        -- D/C/B rank quests CANNOT cause death
                     end
 
                     -- Check for Phoenix Feather if would die

@@ -4,13 +4,14 @@
 local Equipment = {}
 
 -- Equipment slots
-Equipment.slots = {"weapon", "armor", "accessory"}
+Equipment.slots = {"weapon", "armor", "accessory", "mount"}
 
 -- Slot display names
 Equipment.slotNames = {
     weapon = "Weapon",
     armor = "Armor",
-    accessory = "Accessory"
+    accessory = "Accessory",
+    mount = "Mount"
 }
 
 -- Equipment tiers
@@ -396,6 +397,117 @@ Equipment.items = {
         stats = {str = 0, dex = 0, int = 0, vit = 2, luck = 5},
         description = "Revives hero on death (consumed)",
         special = "revive" -- Special flag for revival effect
+    },
+
+    -- ═══════════════════════════════════════════
+    -- MOUNTS - Basic (Shop/Stables)
+    -- ═══════════════════════════════════════════
+    donkey = {
+        id = "donkey",
+        name = "Donkey",
+        slot = "mount",
+        tier = "basic",
+        rank = "D",
+        cost = 80,
+        stats = {str = 0, dex = 0, int = 0, vit = 1, luck = 0},
+        travelSpeed = 0.10,  -- 10% faster travel
+        description = "Slow but reliable pack animal"
+    },
+    riding_horse = {
+        id = "riding_horse",
+        name = "Riding Horse",
+        slot = "mount",
+        tier = "basic",
+        rank = "D",
+        cost = 150,
+        stats = {str = 0, dex = 1, int = 0, vit = 0, luck = 0},
+        travelSpeed = 0.20,  -- 20% faster travel
+        description = "A standard riding horse"
+    },
+    pony = {
+        id = "pony",
+        name = "Pony",
+        slot = "mount",
+        tier = "basic",
+        rank = "D",
+        cost = 100,
+        stats = {str = 0, dex = 0, int = 0, vit = 0, luck = 1},
+        travelSpeed = 0.15,  -- 15% faster travel
+        description = "Small but spirited mount"
+    },
+
+    -- ═══════════════════════════════════════════
+    -- MOUNTS - Crafted/Rare
+    -- ═══════════════════════════════════════════
+    war_horse = {
+        id = "war_horse",
+        name = "War Horse",
+        slot = "mount",
+        tier = "crafted",
+        rank = "C",
+        stats = {str = 1, dex = 1, int = 0, vit = 1, luck = 0},
+        travelSpeed = 0.25,  -- 25% faster travel
+        description = "Trained for battle and speed"
+    },
+    swift_mare = {
+        id = "swift_mare",
+        name = "Swift Mare",
+        slot = "mount",
+        tier = "crafted",
+        rank = "C",
+        stats = {str = 0, dex = 2, int = 0, vit = 0, luck = 1},
+        travelSpeed = 0.30,  -- 30% faster travel
+        description = "Bred for exceptional speed"
+    },
+    armored_destrier = {
+        id = "armored_destrier",
+        name = "Armored Destrier",
+        slot = "mount",
+        tier = "crafted",
+        rank = "B",
+        stats = {str = 2, dex = 0, int = 0, vit = 2, luck = 0},
+        travelSpeed = 0.25,  -- 25% (armored = slower but tankier)
+        description = "Heavy cavalry mount with barding"
+    },
+    elven_steed = {
+        id = "elven_steed",
+        name = "Elven Steed",
+        slot = "mount",
+        tier = "crafted",
+        rank = "B",
+        stats = {str = 0, dex = 3, int = 1, vit = 0, luck = 1},
+        travelSpeed = 0.35,  -- 35% faster travel
+        description = "Graceful and impossibly fast"
+    },
+    nightmare = {
+        id = "nightmare",
+        name = "Nightmare",
+        slot = "mount",
+        tier = "crafted",
+        rank = "A",
+        stats = {str = 2, dex = 2, int = 2, vit = 0, luck = 0},
+        travelSpeed = 0.40,  -- 40% faster travel
+        description = "A demonic horse wreathed in flame"
+    },
+    griffon = {
+        id = "griffon",
+        name = "Griffon",
+        slot = "mount",
+        tier = "crafted",
+        rank = "A",
+        stats = {str = 1, dex = 4, int = 0, vit = 1, luck = 2},
+        travelSpeed = 0.50,  -- 50% faster (flying!)
+        description = "Majestic flying mount"
+    },
+    dragon_mount = {
+        id = "dragon_mount",
+        name = "Young Dragon",
+        slot = "mount",
+        tier = "crafted",
+        rank = "S",
+        stats = {str = 3, dex = 3, int = 3, vit = 2, luck = 3},
+        travelSpeed = 0.60,  -- 60% faster (fastest mount)
+        description = "A trained young dragon - legendary!"
     }
 }
 
@@ -415,8 +527,8 @@ function Equipment.getShopItems()
     -- Sort by slot then by cost
     table.sort(items, function(a, b)
         if a.slot ~= b.slot then
-            local slotOrder = {weapon = 1, armor = 2, accessory = 3}
-            return slotOrder[a.slot] < slotOrder[b.slot]
+            local slotOrder = {weapon = 1, armor = 2, accessory = 3, mount = 4}
+            return (slotOrder[a.slot] or 5) < (slotOrder[b.slot] or 5)
         end
         return a.cost < b.cost
     end)

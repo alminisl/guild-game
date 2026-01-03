@@ -30,3 +30,10 @@ Guild Leader
 - Custom character 
 
 https://zerie.itch.io/tiny-rpg-character-asset-packhi
+
+ | Effect         | Derive From | Why                            |
+  |----------------|-------------|--------------------------------|
+  | Travel speed   | DEX         | Agility = faster movement      |
+  | Recovery speed | VIT         | Toughness = faster healing     |
+  | Better loot    | LCK         | Already exists!                |
+  | Exploration    | DEX + LCK   | Finding paths + finding things |

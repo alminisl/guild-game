@@ -1,11 +1,11 @@
 {
     "synergies": [
         {
-            "id": "cleric_protection",
+            "id": "priest_protection",
             "name": "Divine Protection",
-            "description": "Cleric prevents party death on A/S quests",
+            "description": "Priest prevents party death on A/S quests",
             "requirements": {
-                "classes": ["Cleric", "Saint"],
+                "classes": ["Priest", "Saint"],
                 "minCount": 1
             },
             "bonus": {
@@ -100,9 +100,9 @@
         {
             "id": "healer_tank",
             "name": "Guardian Angel",
-            "description": "+15% survival when Cleric + Knight",
+            "description": "+15% survival when Priest + Knight",
             "requirements": {
-                "combination": ["Cleric|Saint", "Knight|Paladin"]
+                "combination": ["Priest|Saint", "Knight|Paladin"]
             },
             "bonus": {
                 "survivalBonus": 0.15
@@ -112,9 +112,9 @@
         {
             "id": "full_caster",
             "name": "Spell Weave",
-            "description": "+20% success on INT quests with Mage + Cleric",
+            "description": "+20% success on INT quests with Mage + Priest",
             "requirements": {
-                "combination": ["Mage|Archmage", "Cleric|Saint"]
+                "combination": ["Mage|Archmage", "Priest|Saint"]
             },
             "bonus": {
                 "statBonus": {

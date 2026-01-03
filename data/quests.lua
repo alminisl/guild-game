@@ -459,10 +459,10 @@ function Quests.calculateSuccessChance(quest, heroes, EquipmentSystem)
     return math.max(0.15, math.min(0.98, finalChance))
 end
 
--- Check if party has a cleric (for death protection)
+-- Check if party has a priest (for death protection)
 function Quests.partyHasCleric(heroes)
     for _, hero in ipairs(heroes) do
-        if hero.class == "Cleric" or hero.class == "Saint" then
+        if hero.class == "Priest" or hero.class == "Saint" then
             return true
         end
     end

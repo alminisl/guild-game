@@ -14,6 +14,7 @@ local TimeSystem = require("systems.time_system")
 local GuildSystem = require("systems.guild_system")
 local EquipmentSystem = require("systems.equipment_system")
 local CraftingSystem = require("systems.crafting_system")
+local SpriteSystem = require("systems.sprite_system")
 local Components = require("ui.components")
 local Town = require("ui.town")
 local TavernMenu = require("ui.tavern_menu")
@@ -106,6 +107,9 @@ function love.load()
     gameData.inventory.equipment = {
         rusty_sword = 1
     }
+
+    -- Preload hero sprites
+    SpriteSystem.preloadAll()
 end
 
 -- Update game (real-time)
@@ -115,6 +119,13 @@ function love.update(dt)
 
     -- Update guild menu mouse position for tooltips
     GuildMenu.updateMouse(mouseX, mouseY)
+
+    -- Update hero sprite animations
+    SpriteSystem.updateAll(gameData.heroes, dt)
+    -- Also update tavern pool animations
+    if gameData.tavernPool then
+        SpriteSystem.updateAll(gameData.tavernPool, dt)
+    end
 
     -- Update time system
     local newDay = TimeSystem.update(gameData, dt)

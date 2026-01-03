@@ -167,32 +167,34 @@ end
 Heroes.MAX_LEVEL = 10
 
 -- Injury system configuration
+-- Injured heroes can't quest - they must rest to recover
+-- Punishment is the recovery TIME, not stat penalties
 Heroes.injuryConfig = {
     -- Injury states and their effects
     states = {
         fatigued = {
             name = "Fatigued",
-            statPenalty = 0.90,       -- 10% stat reduction
+            statPenalty = 1.0,        -- No stat penalty
             restMultiplier = 1.0,     -- Normal rest time
-            canQuest = true,          -- Can still go on quests
+            canQuest = false,         -- Must rest before next quest
             color = {0.7, 0.7, 0.3},
-            description = "Tired from recent quest. -10% stats."
+            description = "Tired from quest. Resting..."
         },
         injured = {
             name = "Injured",
-            statPenalty = 0.75,       -- 25% stat reduction
+            statPenalty = 1.0,        -- No stat penalty
             restMultiplier = 2.0,     -- 2x rest time
-            canQuest = true,          -- Can quest but risky
+            canQuest = false,         -- Must rest before next quest
             color = {0.8, 0.5, 0.2},
-            description = "Wounded in battle. -25% stats, 2x rest time."
+            description = "Injured in battle. Needs longer rest."
         },
         wounded = {
             name = "Wounded",
-            statPenalty = 0.50,       -- 50% stat reduction
+            statPenalty = 1.0,        -- No stat penalty
             restMultiplier = 3.0,     -- 3x rest time
-            canQuest = false,         -- Cannot quest until healed
+            canQuest = false,         -- Must rest before next quest
             color = {0.7, 0.2, 0.2},
-            description = "Severely wounded. Cannot quest. -50% stats, 3x rest time."
+            description = "Severely wounded. Needs extended rest."
         }
     },
     -- Which injury state results from quest outcomes by rank
@@ -381,7 +383,8 @@ function Heroes.generate(options)
         equipment = {
             weapon = nil,
             armor = nil,
-            accessory = nil
+            accessory = nil,
+            mount = nil
         }
     }
 
@@ -689,7 +692,7 @@ function Heroes.determineInjury(questRank, success, hasClericProtection)
     end
 end
 
--- Check if class provides death protection (Cleric/Saint)
+-- Check if class provides death protection (Priest/Saint)
 function Heroes.providesDeathProtection(hero)
     local data = loadHeroData()
     local classData = data.classes[hero.class]

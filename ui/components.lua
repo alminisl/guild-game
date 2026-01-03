@@ -50,12 +50,12 @@ Components.colors = {
     tooltipBg = {0.1, 0.1, 0.15, 0.95},
     tooltipBorder = {0.5, 0.5, 0.6, 0.8},
 
-    -- Ranks
+    -- Ranks (D=gray, C=green, B=blue, A=yellow, S=red)
     rankD = {0.5, 0.5, 0.5},
     rankC = {0.3, 0.7, 0.3},
-    rankB = {0.3, 0.5, 0.8},
-    rankA = {0.6, 0.3, 0.7},
-    rankS = {1, 0.7, 0.2},
+    rankB = {0.3, 0.5, 0.9},
+    rankA = {1, 0.85, 0.2},
+    rankS = {0.9, 0.2, 0.2},
 }
 
 -- Get rank color

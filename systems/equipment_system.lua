@@ -224,8 +224,8 @@ function EquipmentSystem.getInventoryList(gameData)
     -- Sort by slot then by rank
     table.sort(items, function(a, b)
         if a.item.slot ~= b.item.slot then
-            local slotOrder = {weapon = 1, armor = 2, accessory = 3}
-            return slotOrder[a.item.slot] < slotOrder[b.item.slot]
+            local slotOrder = {weapon = 1, armor = 2, accessory = 3, mount = 4}
+            return (slotOrder[a.item.slot] or 5) < (slotOrder[b.item.slot] or 5)
         end
         local rankOrder = {D = 1, C = 2, B = 3, A = 4, S = 5}
         return (rankOrder[a.item.rank] or 0) < (rankOrder[b.item.rank] or 0)
@@ -273,6 +273,103 @@ function EquipmentSystem.getAvailableForSlot(gameData, slot, heroRank)
     end)
 
     return available
+end
+
+-- Get mount travel speed bonus for a single hero
+function EquipmentSystem.getMountSpeed(hero)
+    local mountId = hero.equipment and hero.equipment.mount
+    if not mountId then return 0 end
+
+    local mount = Equipment.get(mountId)
+    if not mount or not mount.travelSpeed then return 0 end
+
+    return mount.travelSpeed
+end
+
+-- Calculate party travel speed multiplier
+-- Logic: Party moves at the pace of the slowest member
+-- If some heroes have mounts and others don't, the benefit is reduced
+-- Formula: Average mount speed, weighted by how many are mounted
+function EquipmentSystem.getPartyTravelSpeed(partyHeroes)
+    if not partyHeroes or #partyHeroes == 0 then
+        return 1.0  -- No speed change
+    end
+
+    local mountedCount = 0
+    local totalMountSpeed = 0
+    local slowestMountSpeed = 999
+
+    for _, hero in ipairs(partyHeroes) do
+        local mountSpeed = EquipmentSystem.getMountSpeed(hero)
+        if mountSpeed > 0 then
+            mountedCount = mountedCount + 1
+            totalMountSpeed = totalMountSpeed + mountSpeed
+            slowestMountSpeed = math.min(slowestMountSpeed, mountSpeed)
+        else
+            -- Hero without mount - they're walking (0% bonus)
+            slowestMountSpeed = 0
+        end
+    end
+
+    -- If nobody has a mount, no bonus
+    if mountedCount == 0 then
+        return 1.0
+    end
+
+    -- If everyone has a mount, use the slowest mount's speed
+    -- (party moves at pace of slowest)
+    if mountedCount == #partyHeroes then
+        return 1.0 - slowestMountSpeed  -- e.g., 0.30 bonus = 0.70 travel time
+    end
+
+    -- Partial mounts: Calculate reduced benefit
+    -- The unmounted heroes slow everyone down significantly
+    -- Benefit = (mounted% * slowest_mount_speed * 0.5)
+    -- So if 2 of 4 heroes have mounts (50%), and slowest is 0.20,
+    -- you only get 0.50 * 0.20 * 0.5 = 0.05 (5%) reduction
+    local mountedPercent = mountedCount / #partyHeroes
+    local effectiveSpeed = mountedPercent * slowestMountSpeed * 0.5
+
+    return 1.0 - effectiveSpeed
+end
+
+-- Get formatted party travel info for UI display
+function EquipmentSystem.getPartyTravelInfo(partyHeroes)
+    if not partyHeroes or #partyHeroes == 0 then
+        return {
+            multiplier = 1.0,
+            mountedCount = 0,
+            totalCount = 0,
+            description = "No party"
+        }
+    end
+
+    local mountedCount = 0
+    for _, hero in ipairs(partyHeroes) do
+        if EquipmentSystem.getMountSpeed(hero) > 0 then
+            mountedCount = mountedCount + 1
+        end
+    end
+
+    local multiplier = EquipmentSystem.getPartyTravelSpeed(partyHeroes)
+    local bonus = math.floor((1 - multiplier) * 100)
+
+    local description
+    if mountedCount == 0 then
+        description = "On foot"
+    elseif mountedCount == #partyHeroes then
+        description = "All mounted (-" .. bonus .. "% time)"
+    else
+        description = mountedCount .. "/" .. #partyHeroes .. " mounted (-" .. bonus .. "% time)"
+    end
+
+    return {
+        multiplier = multiplier,
+        mountedCount = mountedCount,
+        totalCount = #partyHeroes,
+        bonus = bonus,
+        description = description
+    }
 end
 
 return EquipmentSystem

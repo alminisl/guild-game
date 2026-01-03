@@ -16,6 +16,7 @@ local MENU = {
 -- Tab definitions
 local TABS = {
     {id = "shop", label = "Shop"},
+    {id = "stables", label = "Stables"},
     {id = "craft", label = "Craft"},
     {id = "inventory", label = "Inventory"}
 }
@@ -60,6 +61,98 @@ local function drawMaterialSummary(gameData, Materials, x, y)
         love.graphics.print(tier:sub(1,1):upper() .. ":" .. counts[tier], matX, y)
         matX = matX + 50
     end
+end
+
+-- Draw the stables tab (mount shop)
+local function drawStablesTab(gameData, Equipment, Economy, x, y, width, height)
+    -- Title and info
+    love.graphics.setColor(Components.colors.text)
+    love.graphics.print("Purchase mounts for your heroes", x + 10, y)
+    love.graphics.setColor(Components.colors.textDim)
+    love.graphics.print("Mounts reduce travel time on quests. All party members need mounts for full effect!", x + 10, y + 18)
+
+    -- Get mount items
+    local mountItems = {}
+    for id, item in pairs(Equipment.items) do
+        if item.slot == "mount" and item.tier == "basic" then
+            table.insert(mountItems, item)
+        end
+    end
+
+    -- Sort by cost
+    table.sort(mountItems, function(a, b) return a.cost < b.cost end)
+
+    -- Draw items
+    local itemY = y + 50
+    local itemHeight = 70
+    local maxVisible = 5
+
+    for i = 1, math.min(#mountItems, maxVisible) do
+        local idx = i + scrollOffset
+        if idx <= #mountItems then
+            local item = mountItems[idx]
+            local canAfford = Economy.canAfford(gameData, item.cost)
+
+            -- Item card
+            local cardColor = canAfford and {0.3, 0.28, 0.25} or {0.2, 0.2, 0.2}
+            love.graphics.setColor(cardColor)
+            love.graphics.rectangle("fill", x + 10, itemY, width - 20, itemHeight - 5, 5, 5)
+
+            -- Mount icon
+            love.graphics.setColor(0.6, 0.45, 0.3)
+            love.graphics.rectangle("fill", x + 15, itemY + 5, 55, 55, 3, 3)
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.printf("M", x + 15, itemY + 22, 55, "center")
+
+            -- Mount name and rank
+            love.graphics.setColor(Components.colors.text)
+            love.graphics.print(item.name, x + 80, itemY + 5)
+
+            -- Rank badge
+            Components.drawRankBadge(item.rank, x + 80 + love.graphics.getFont():getWidth(item.name) + 10, itemY + 2, 22)
+
+            -- Travel speed bonus
+            local speedBonus = math.floor((item.travelSpeed or 0) * 100)
+            love.graphics.setColor(0.4, 0.8, 0.5)
+            love.graphics.print("-" .. speedBonus .. "% Travel Time", x + 80, itemY + 24)
+
+            -- Stats if any
+            local statsStr = Equipment.formatStats(item)
+            if statsStr ~= "" then
+                love.graphics.setColor(0.5, 0.7, 0.5)
+                love.graphics.print(statsStr, x + 230, itemY + 24)
+            end
+
+            -- Description
+            love.graphics.setColor(Components.colors.textDim)
+            love.graphics.print(item.description, x + 80, itemY + 42)
+
+            -- Price and buy button
+            love.graphics.setColor(Components.colors.gold)
+            love.graphics.print(item.cost .. "g", x + width - 150, itemY + 15)
+
+            local btnColor = canAfford and Components.colors.buttonActive or Components.colors.buttonDisabled
+            love.graphics.setColor(btnColor)
+            love.graphics.rectangle("fill", x + width - 80, itemY + 20, 60, 28, 3, 3)
+            love.graphics.setColor(Components.colors.text)
+            love.graphics.printf("Buy", x + width - 80, itemY + 26, 60, "center")
+
+            itemY = itemY + itemHeight
+        end
+    end
+
+    -- Scroll indicator if needed
+    if #mountItems > maxVisible then
+        love.graphics.setColor(Components.colors.textDim)
+        love.graphics.print("Scroll: " .. (scrollOffset + 1) .. "-" ..
+            math.min(scrollOffset + maxVisible, #mountItems) .. " of " .. #mountItems,
+            x + 10, y + height - 25)
+    end
+
+    -- Tip about mount mechanics
+    love.graphics.setColor(Components.colors.textDim)
+    love.graphics.printf("TIP: Party travels at the pace of the slowest member. If only some heroes have mounts, the benefit is reduced.",
+        x + 10, y + height - 50, width - 20, "left")
 end
 
 -- Draw the shop tab
@@ -289,7 +382,8 @@ local function drawInventoryTab(gameData, Equipment, Materials, EquipmentSystem,
             local slotColors = {
                 weapon = {0.35, 0.3, 0.25},
                 armor = {0.3, 0.3, 0.35},
-                accessory = {0.35, 0.3, 0.35}
+                accessory = {0.35, 0.3, 0.35},
+                mount = {0.35, 0.32, 0.25}
             }
             love.graphics.setColor(slotColors[item.slot] or {0.3, 0.3, 0.3})
             love.graphics.rectangle("fill", itemX, itemY, itemWidth - 10, 45, 3, 3)
@@ -409,6 +503,8 @@ function ArmoryMenu.draw(gameData, Equipment, Materials, Recipes, EquipmentSyste
 
     if currentTab == "shop" then
         drawShopTab(gameData, Equipment, Economy, contentX, contentY, contentWidth, contentHeight)
+    elseif currentTab == "stables" then
+        drawStablesTab(gameData, Equipment, Economy, contentX, contentY, contentWidth, contentHeight)
     elseif currentTab == "craft" then
         drawCraftTab(gameData, Materials, Recipes, Equipment, CraftingSystem, contentX, contentY, contentWidth, contentHeight)
     elseif currentTab == "inventory" then
@@ -445,6 +541,46 @@ function ArmoryMenu.handleClick(x, y, gameData, Equipment, Materials, Recipes, E
     local contentX = MENU.x + 20
     local contentY = MENU.y + 95
     local contentWidth = MENU.width - 40
+
+    -- Stables tab clicks
+    if currentTab == "stables" then
+        -- Get mount items
+        local mountItems = {}
+        for id, item in pairs(Equipment.items) do
+            if item.slot == "mount" and item.tier == "basic" then
+                table.insert(mountItems, item)
+            end
+        end
+        table.sort(mountItems, function(a, b) return a.cost < b.cost end)
+
+        local itemY = contentY + 50
+        local itemHeight = 70
+        local maxVisible = 5
+
+        for i = 1, math.min(#mountItems, maxVisible) do
+            local idx = i + scrollOffset
+            if idx <= #mountItems then
+                local item = mountItems[idx]
+
+                -- Buy button click
+                if Components.isPointInRect(x, y, contentX + contentWidth - 80, itemY + 20, 60, 28) then
+                    if Economy.canAfford(gameData, item.cost) then
+                        local success, msg = Economy.spend(gameData, item.cost, "buying " .. item.name)
+                        if success then
+                            EquipmentSystem.addToInventory(item.id, 1, gameData)
+                            return "purchased", "Bought " .. item.name .. "!"
+                        else
+                            return "error", msg
+                        end
+                    else
+                        return "error", "Not enough gold!"
+                    end
+                end
+
+                itemY = itemY + itemHeight
+            end
+        end
+    end
 
     -- Shop tab clicks
     if currentTab == "shop" then

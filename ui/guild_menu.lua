@@ -2,6 +2,7 @@
 -- UI for managing heroes and assigning quests
 
 local Components = require("ui.components")
+local SpriteSystem = require("systems.sprite_system")
 
 local GuildMenu = {}
 
@@ -180,7 +181,7 @@ function drawTooltips()
             "- 2 Knights: +10% survival",
             "- 2 Mages: +15% INT quests",
             "- Rogue + Ranger: +25% drops",
-            "- Cleric: Death protection",
+            "- Priest: Death protection",
             "",
             "Hover over active synergies for details."
         }
@@ -249,22 +250,33 @@ function drawHeroDetailPopup(hero, Heroes)
     love.graphics.setColor(Components.colors.text)
     love.graphics.printf(hero.name, popupX, popupY + 15, popupW, "center")
 
-    -- Rank badge
-    Components.drawRankBadge(hero.rank, popupX + 20, popupY + 50, 40)
+    -- Large animated sprite portrait (left side)
+    local spritePortraitX = popupX + 60
+    local spritePortraitY = popupY + 75
+    -- Background frame for portrait
+    love.graphics.setColor(0.15, 0.15, 0.2)
+    love.graphics.rectangle("fill", spritePortraitX - 45, spritePortraitY - 45, 90, 90, 5, 5)
+    love.graphics.setColor(0.4, 0.4, 0.5)
+    love.graphics.rectangle("line", spritePortraitX - 45, spritePortraitY - 45, 90, 90, 5, 5)
+    -- Draw the sprite (larger to compensate for sprite padding)
+    SpriteSystem.drawCentered(hero, spritePortraitX, spritePortraitY, 216, 216, "Idle")
 
-    -- Race, Class and level
+    -- Rank badge (right of portrait)
+    Components.drawRankBadge(hero.rank, popupX + 130, popupY + 40, 36)
+
+    -- Race, Class and level (right of portrait)
     love.graphics.setColor(Components.colors.textDim)
-    love.graphics.print(hero.race or "Human", popupX + 70, popupY + 50)
+    love.graphics.print(hero.race or "Human", popupX + 175, popupY + 42)
     love.graphics.setColor(Components.colors.text)
-    love.graphics.print(hero.class .. " - Level " .. hero.level, popupX + 70, popupY + 70)
+    love.graphics.print(hero.class .. " - Level " .. hero.level, popupX + 175, popupY + 62)
 
     -- Power
     love.graphics.setColor(Components.colors.warning)
-    love.graphics.print("Power: " .. hero.power, popupX + 70, popupY + 88)
+    love.graphics.print("Power: " .. hero.power, popupX + 175, popupY + 82)
 
     -- XP bar
     local xpPercent = hero.xpToLevel > 0 and (hero.xp / hero.xpToLevel) or 1
-    Components.drawProgressBar(popupX + 150, popupY + 88, 120, 16, xpPercent, {
+    Components.drawProgressBar(popupX + 290, popupY + 82, 120, 16, xpPercent, {
         fgColor = {0.5, 0.3, 0.7},
         text = hero.xp .. "/" .. hero.xpToLevel .. " XP"
     })
@@ -481,7 +493,8 @@ function drawHeroDetailPopup(hero, Heroes)
     local equipSlots = {
         {key = "weapon", label = "Weapon", icon = "[W]"},
         {key = "armor", label = "Armor", icon = "[A]"},
-        {key = "accessory", label = "Accessory", icon = "[C]"}
+        {key = "accessory", label = "Accessory", icon = "[C]"},
+        {key = "mount", label = "Mount", icon = "[M]"}
     }
 
     -- Store slot positions for click handling
@@ -655,7 +668,7 @@ function drawRosterTab(gameData, startY, height, Heroes, TimeSystem, GuildSystem
         return
     end
 
-    local cardHeight = 55
+    local cardHeight = 100
     local cardWidth = MENU.width - 40
     local y = startY + 25
 
@@ -673,25 +686,31 @@ function drawRosterTab(gameData, startY, height, Heroes, TimeSystem, GuildSystem
         end
         Components.drawPanel(MENU.x + 20, y, cardWidth, cardHeight, {color = bgColor, cornerRadius = 5})
 
-        -- Rank badge
-        Components.drawRankBadge(hero.rank, MENU.x + 30, y + 12, 30)
+        -- Hero sprite portrait (much larger to compensate for sprite padding)
+        local spriteX = MENU.x + 70
+        local spriteY = y + cardHeight / 2
+        SpriteSystem.drawCentered(hero, spriteX, spriteY, 240, 240, "Idle")
 
-        -- Hero info
+        -- Hero info (shifted right for bigger sprite)
         love.graphics.setColor(Components.colors.text)
-        love.graphics.print(hero.name, MENU.x + 70, y + 8)
+        love.graphics.print(hero.name, MENU.x + 130, y + 15)
 
         love.graphics.setColor(Components.colors.textDim)
-        love.graphics.print((hero.race or "Human") .. " " .. hero.class .. " Lv." .. hero.level .. " | Power: " .. hero.power, MENU.x + 70, y + 28)
+        love.graphics.print((hero.race or "Human") .. " " .. hero.class .. " Lv." .. hero.level, MENU.x + 130, y + 35)
 
-        -- Status with progress
-        local statusX = MENU.x + 350
+        -- Rank and Power on third line
+        love.graphics.setColor(Components.colors.warning)
+        love.graphics.print("Rank: " .. hero.rank .. "  |  Power: " .. hero.power, MENU.x + 130, y + 55)
+
+        -- Status with progress (centered vertically for taller card)
+        local statusX = MENU.x + 380
         if hero.status == "idle" then
             love.graphics.setColor(Components.colors.success)
-            love.graphics.print("AVAILABLE", statusX, y + 18)
+            love.graphics.print("AVAILABLE", statusX, y + 38)
 
             -- Fire button (only for idle heroes)
-            local fireBtnX = MENU.x + 520
-            local fireBtnY = y + 15
+            local fireBtnX = MENU.x + 550
+            local fireBtnY = y + 35
             local fireBtnW = 50
             local fireBtnH = 24
 
@@ -710,11 +729,11 @@ function drawRosterTab(gameData, startY, height, Heroes, TimeSystem, GuildSystem
             end
         elseif hero.status == "resting" then
             love.graphics.setColor(0.6, 0.4, 0.7)
-            love.graphics.print("RESTING", statusX, y + 8)
+            love.graphics.print("RESTING", statusX, y + 25)
             -- Rest progress bar
             local restPercent = Heroes.getRestPercent(hero)
             local timeLeft = math.max(0, (hero.restTimeMax or 0) - (hero.restProgress or 0))
-            Components.drawProgressBar(statusX, y + 28, 150, 14, restPercent, {
+            Components.drawProgressBar(statusX, y + 48, 150, 14, restPercent, {
                 fgColor = {0.6, 0.4, 0.7},
                 text = TimeSystem.formatDuration(timeLeft)
             })
@@ -722,12 +741,12 @@ function drawRosterTab(gameData, startY, height, Heroes, TimeSystem, GuildSystem
             -- On quest
             love.graphics.setColor(Components.colors.warning)
             local phaseText = (hero.questPhase or ""):upper()
-            love.graphics.print(phaseText, statusX, y + 8)
+            love.graphics.print(phaseText, statusX, y + 25)
             -- Quest progress bar
             local phaseMax = hero.questPhaseMax or 1
             local progress = (hero.questProgress or 0) / phaseMax
             local timeLeft = math.max(0, phaseMax - (hero.questProgress or 0))
-            Components.drawProgressBar(statusX, y + 28, 150, 14, progress, {
+            Components.drawProgressBar(statusX, y + 48, 150, 14, progress, {
                 fgColor = Components.colors.warning,
                 text = TimeSystem.formatDuration(timeLeft)
             })
@@ -738,12 +757,12 @@ function drawRosterTab(gameData, startY, height, Heroes, TimeSystem, GuildSystem
             local injuryInfo = Heroes.getInjuryInfo(hero)
             local injuryColor = Components.getInjuryColor(hero.injuryState)
             love.graphics.setColor(injuryColor)
-            love.graphics.print(injuryInfo.name:upper(), MENU.x + cardWidth - 150, y + 18)
+            love.graphics.print(injuryInfo.name:upper(), MENU.x + cardWidth - 150, y + 38)
         end
 
         -- XP bar
         local xpPercent = hero.xp / hero.xpToLevel
-        Components.drawProgressBar(MENU.x + cardWidth - 80, y + 18, 70, 18, xpPercent, {
+        Components.drawProgressBar(MENU.x + cardWidth - 80, y + 38, 70, 18, xpPercent, {
             fgColor = {0.5, 0.3, 0.7},
             text = "XP"
         })
@@ -1099,15 +1118,15 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
         local deathWarningOffset = synergyY - (successY + 18)
         if selectedQuest.combat and (selectedQuest.rank == "A" or selectedQuest.rank == "S") then
             deathWarningOffset = deathWarningOffset + 18
-            -- Check if party has a cleric for protection
-            local hasCleric = Quests.partyHasCleric(partyHeroes)
-            if hasCleric then
+            -- Check if party has a priest for protection
+            local hasPriest = Quests.partyHasCleric(partyHeroes)
+            if hasPriest then
                 love.graphics.setColor(0.3, 0.7, 0.3)  -- Green - protected
-                love.graphics.print("Cleric provides death protection!", partyX, synergyY)
+                love.graphics.print("Priest provides death protection!", partyX, synergyY)
             else
                 love.graphics.setColor(0.9, 0.3, 0.3)  -- Red - danger
                 local deathChance = selectedQuest.rank == "S" and "50%" or "30%"
-                love.graphics.print("DANGER: " .. deathChance .. " death on fail! Bring a Cleric!", partyX, synergyY)
+                love.graphics.print("DANGER: " .. deathChance .. " death on fail! Bring a Priest!", partyX, synergyY)
             end
             synergyY = synergyY + 16
         end
@@ -1132,36 +1151,39 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
         -- Available heroes list (positioned below the pentagon chart area)
         local y = math.max(synergyY + 8, startY + 210)
         for i, hero in ipairs(gameData.heroes) do
-            if y + 32 > MENU.y + MENU.height - 60 then break end
+            if y + 38 > MENU.y + MENU.height - 60 then break end
 
             if hero.status == "idle" then
                 local isSelected = selectedHeroes[hero.id] == true
 
                 local bgColor = isSelected and {0.3, 0.5, 0.3} or Components.colors.panelLight
-                Components.drawPanel(partyX, y, partyWidth, 28, {
+                Components.drawPanel(partyX, y, partyWidth, 34, {
                     color = bgColor,
                     cornerRadius = 3
                 })
 
-                Components.drawRankBadge(hero.rank, partyX + 5, y + 2, 24)
+                -- Small sprite portrait
+                SpriteSystem.drawCentered(hero, partyX + 20, y + 17, 60, 60, "Idle")
+
+                Components.drawRankBadge(hero.rank, partyX + 38, y + 5, 24)
                 love.graphics.setColor(Components.colors.text)
-                love.graphics.print(hero.name, partyX + 35, y + 6)
+                love.graphics.print(hero.name, partyX + 68, y + 9)
                 -- Show race and class
                 love.graphics.setColor(Components.colors.textDim)
-                love.graphics.print((hero.race or "Human") .. " " .. hero.class, partyX + 150, y + 6)
+                love.graphics.print((hero.race or "Human") .. " " .. hero.class, partyX + 180, y + 9)
                 -- Show hero's relevant stat for this quest (with equipment bonus)
                 local heroStat = hero.stats[reqStat] or 0
                 local heroEquipBonus = _EquipmentSystem and _EquipmentSystem.getStatBonus(hero, reqStat) or 0
                 love.graphics.setColor(statColors[reqStat] or Components.colors.textDim)
                 if heroEquipBonus > 0 then
-                    love.graphics.printf(statNames[reqStat] .. ":" .. heroStat, partyX + partyWidth - 70, y + 6, 35, "right")
+                    love.graphics.printf(statNames[reqStat] .. ":" .. heroStat, partyX + partyWidth - 70, y + 9, 35, "right")
                     love.graphics.setColor(Components.colors.success)
-                    love.graphics.printf("+" .. heroEquipBonus, partyX + partyWidth - 30, y + 6, 25, "right")
+                    love.graphics.printf("+" .. heroEquipBonus, partyX + partyWidth - 30, y + 9, 25, "right")
                 else
-                    love.graphics.printf(statNames[reqStat] .. ":" .. heroStat, partyX + partyWidth - 50, y + 6, 45, "right")
+                    love.graphics.printf(statNames[reqStat] .. ":" .. heroStat, partyX + partyWidth - 50, y + 9, 45, "right")
                 end
 
-                y = y + 32
+                y = y + 38
             end
         end
 
@@ -1233,18 +1255,21 @@ function drawActiveTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
             text = TimeSystem.formatDuration(timeRemaining) .. " left"
         })
 
-        -- Assigned heroes
-        local heroNames = {}
+        -- Assigned heroes with sprites
+        local heroX = MENU.x + 70
+        love.graphics.setColor(Components.colors.textDim)
+        love.graphics.print("Party:", heroX, y + 52)
+        heroX = heroX + 45
         for _, heroId in ipairs(quest.assignedHeroes) do
             for _, hero in ipairs(gameData.heroes) do
                 if hero.id == heroId then
-                    table.insert(heroNames, hero.name)
+                    -- Draw small sprite
+                    SpriteSystem.drawCentered(hero, heroX + 15, y + 60, 50, 50, "Idle")
+                    heroX = heroX + 35
                     break
                 end
             end
         end
-        love.graphics.setColor(Components.colors.textDim)
-        love.graphics.print("Party: " .. table.concat(heroNames, ", "), MENU.x + 70, y + 55)
 
         -- Reward preview
         love.graphics.setColor(Components.colors.gold)
@@ -1500,7 +1525,7 @@ function GuildMenu.handleClick(x, y, gameData, QuestSystem, Quests, Heroes, Guil
 
     -- Roster tab - click on hero to view details or fire
     if currentTab == "roster" then
-        local cardHeight = 55
+        local cardHeight = 100
         local cardWidth = MENU.width - 40
         local heroY = contentY + 25
 
@@ -1509,8 +1534,8 @@ function GuildMenu.handleClick(x, y, gameData, QuestSystem, Quests, Heroes, Guil
 
             -- Check Fire button click first (only for idle heroes)
             if hero.status == "idle" then
-                local fireBtnX = MENU.x + 520
-                local fireBtnY = heroY + 15
+                local fireBtnX = MENU.x + 550
+                local fireBtnY = heroY + 35
                 local fireBtnW = 50
                 local fireBtnH = 24
 
@@ -1595,7 +1620,7 @@ function GuildMenu.handleClick(x, y, gameData, QuestSystem, Quests, Heroes, Guil
             local heroY = heroListStartY
             for i, hero in ipairs(gameData.heroes) do
                 if hero.status == "idle" then
-                    if Components.isPointInRect(x, y, partyX, heroY, partyWidth, 28) then
+                    if Components.isPointInRect(x, y, partyX, heroY, partyWidth, 34) then
                         if selectedHeroes[hero.id] then
                             -- Always allow deselection
                             selectedHeroes[hero.id] = nil
@@ -1606,7 +1631,7 @@ function GuildMenu.handleClick(x, y, gameData, QuestSystem, Quests, Heroes, Guil
                         -- If at limit and trying to select, do nothing (visual feedback via warning color)
                         return nil
                     end
-                    heroY = heroY + 32
+                    heroY = heroY + 38
                 end
             end
 
