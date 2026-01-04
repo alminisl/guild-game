@@ -5,6 +5,7 @@ local QuestSystem = {}
 
 -- Load EquipmentSystem for mount calculations
 local EquipmentSystem = require("systems.equipment_system")
+local PartySystem = require("systems.party_system")
 
 -- Assign heroes to a quest (starts the quest)
 function QuestSystem.assignParty(quest, heroes, gameData)
@@ -18,18 +19,11 @@ function QuestSystem.assignParty(quest, heroes, gameData)
         return false, "Too many heroes! Max " .. maxHeroes .. " for this quest."
     end
 
-    -- Calculate party power
-    local partyPower = 0
+    -- Check hero availability
     for _, hero in ipairs(heroes) do
         if hero.status ~= "idle" then
             return false, hero.name .. " is not available"
         end
-        partyPower = partyPower + hero.power
-    end
-
-    -- Check power requirement
-    if partyPower < quest.requiredPower then
-        return false, "Party power (" .. partyPower .. ") is less than required (" .. quest.requiredPower .. ")"
     end
 
     -- Calculate travel speed based on party mounts
@@ -131,7 +125,30 @@ function QuestSystem.update(gameData, dt, Heroes, Quests, Economy, GuildSystem, 
             if quest.phaseProgress >= phaseMax then
                 -- Quest complete - resolve it
                 local heroList = QuestSystem.getQuestHeroes(quest, gameData)
-                local result = Quests.resolve(quest, heroList)
+
+                -- Check for party luck bonus before resolution
+                local partyLuckBonus = PartySystem.getLuckBonus(heroList, gameData)
+
+                local result = Quests.resolve(quest, heroList, partyLuckBonus)
+
+                -- Party re-roll mechanic: if quest failed and heroes are a formed party, try again
+                if not result.success and PartySystem.canReroll(heroList, gameData) then
+                    local rerollResult = Quests.resolve(quest, heroList, partyLuckBonus)
+                    if rerollResult.success then
+                        result = rerollResult
+                        result.message = "Party bond triggered a re-roll! " .. result.message
+                    else
+                        result.message = result.message .. " (Party re-roll also failed)"
+                    end
+                end
+
+                -- Track quest for party formation (only on success)
+                if result.success then
+                    local party, justFormed = PartySystem.recordQuestSuccess(heroList, gameData)
+                    if justFormed and party then
+                        result.message = result.message .. " " .. party.name .. " has officially formed!"
+                    end
+                end
 
                 -- Apply rewards
                 Economy.earn(gameData, result.goldReward)
@@ -140,24 +157,49 @@ function QuestSystem.update(gameData, dt, Heroes, Quests, Economy, GuildSystem, 
                 local deadHeroes = {}
                 local revivedHeroes = {}
 
+                -- Rank values for XP bonus calculation
+                local rankValues = {D = 1, C = 2, B = 3, A = 4, S = 5}
+                local questRankValue = rankValues[quest.rank] or 1
+
                 -- Award XP and handle death/revival
-                local xpPerHero = math.floor(result.xpReward / #heroList)
+                local baseXpPerHero = math.floor(result.xpReward / #heroList)
                 for _, hero in ipairs(heroList) do
-                    local leveledUp = Heroes.addXP(hero, xpPerHero)
+                    -- Calculate rank-differential XP bonus
+                    -- Heroes completing quests above their rank get bonus XP
+                    local heroRankValue = rankValues[hero.rank] or 1
+                    local rankDiff = questRankValue - heroRankValue
+                    local xpMultiplier = 1.0
+                    if rankDiff > 0 and result.success then
+                        -- 50% bonus XP per rank above hero's rank (only on success)
+                        xpMultiplier = 1.0 + (rankDiff * 0.5)
+                    end
+                    local xpForHero = math.floor(baseXpPerHero * xpMultiplier)
+
+                    local leveledUp = Heroes.addXP(hero, xpForHero)
                     if leveledUp then
                         result.message = result.message .. " " .. hero.name .. " leveled up!"
+                    end
+                    if rankDiff > 0 and result.success then
+                        result.message = result.message .. " " .. hero.name .. " gained bonus XP for besting a higher rank quest!"
                     end
 
                     -- Check for death on failed COMBAT quests (A/S rank ONLY)
                     local shouldDie = false
                     if not result.success and quest.combat then
-                        -- Only A/S rank combat quest failures can cause death
-                        local deathChance = {A = 0.30, S = 0.50}
-                        local chance = deathChance[quest.rank]
-                        if chance then
-                            local roll = math.random()
-                            if roll < chance then
-                                shouldDie = true
+                        -- Formed parties with a cleric have guaranteed death protection
+                        local hasPartyClericProtection = PartySystem.hasClericProtection(heroList, gameData)
+                        if hasPartyClericProtection then
+                            -- Party cleric saves everyone - no death rolls
+                            shouldDie = false
+                        else
+                            -- Only A/S rank combat quest failures can cause death
+                            local deathChance = {A = 0.30, S = 0.50}
+                            local chance = deathChance[quest.rank]
+                            if chance then
+                                local roll = math.random()
+                                if roll < chance then
+                                    shouldDie = true
+                                end
                             end
                         end
                         -- D/C/B rank quests CANNOT cause death
@@ -316,14 +358,6 @@ function QuestSystem.getSuccessChance(quest, heroes, Quests, EquipmentSystem)
     return Quests.calculateSuccessChance(quest, heroes, EquipmentSystem)
 end
 
--- Get party power for UI display
-function QuestSystem.getPartyPower(heroes)
-    local power = 0
-    for _, hero in ipairs(heroes) do
-        power = power + hero.power
-    end
-    return power
-end
 
 -- Get count of available heroes
 function QuestSystem.getAvailableHeroCount(gameData)

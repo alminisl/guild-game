@@ -98,12 +98,13 @@ local function prepareDataForSave(gameData)
             xpToLevel = hero.xpToLevel,
             stats = hero.stats,
             status = "idle",  -- Reset to idle on load
-            power = hero.power,
             hireCost = hero.hireCost,
             isAwakened = hero.isAwakened,
             failureCount = hero.failureCount or 0,
             injuryState = hero.injuryState,
             equipment = hero.equipment,
+            dungeonsCleared = hero.dungeonsCleared or 0,
+            partyId = hero.partyId,
             -- Quest-related fields reset on load
             currentQuestId = nil,
             questPhase = nil,
@@ -115,6 +116,10 @@ local function prepareDataForSave(gameData)
         }
         table.insert(saveData.heroes, savedHero)
     end
+
+    -- Serialize parties
+    saveData.parties = gameData.parties or {}
+    saveData.protoParties = gameData.protoParties or {}
 
     -- Serialize graveyard
     for _, hero in ipairs(gameData.graveyard) do
@@ -208,12 +213,13 @@ function SaveSystem.applyLoadedData(gameData, loadedData, Heroes, Quests, GuildS
                 xpToLevel = heroData.xpToLevel,
                 stats = heroData.stats,
                 status = "idle",
-                power = heroData.power or Heroes.calculatePower(heroData.rank, heroData.level),
                 hireCost = heroData.hireCost,
                 isAwakened = heroData.isAwakened,
                 failureCount = heroData.failureCount or 0,
                 injuryState = heroData.injuryState,
-                equipment = heroData.equipment or {weapon = nil, armor = nil, accessory = nil},
+                equipment = heroData.equipment or {weapon = nil, armor = nil, accessory = nil, mount = nil},
+                dungeonsCleared = heroData.dungeonsCleared or 0,
+                partyId = heroData.partyId,
                 currentQuestId = nil,
                 questPhase = nil,
                 questProgress = 0,
@@ -225,6 +231,21 @@ function SaveSystem.applyLoadedData(gameData, loadedData, Heroes, Quests, GuildS
             table.insert(gameData.heroes, hero)
         end
     end
+
+    -- Parties and proto-parties
+    gameData.parties = loadedData.parties or {}
+    gameData.protoParties = loadedData.protoParties or {}
+
+    -- Restore party system next ID
+    local PartySystem = require("systems.party_system")
+    local maxPartyId = 0
+    for _, party in ipairs(gameData.parties) do
+        if party.id > maxPartyId then maxPartyId = party.id end
+    end
+    for _, party in ipairs(gameData.protoParties) do
+        if party.id > maxPartyId then maxPartyId = party.id end
+    end
+    PartySystem.setNextId(maxPartyId + 1)
 
     -- Graveyard
     gameData.graveyard = loadedData.graveyard or {}

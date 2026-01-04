@@ -289,13 +289,16 @@ function QuestResultModal.buildResult(quest, questResult, heroList, materialDrop
 
     -- Generate failure hints
     if not questResult.success then
-        -- Power hint
-        local totalPower = 0
+        -- Rank mismatch hint
+        local rankValues = {D = 1, C = 2, B = 3, A = 4, S = 5}
+        local questRankValue = rankValues[quest.rank] or 1
+        local avgHeroRank = 0
         for _, hero in ipairs(heroList) do
-            totalPower = totalPower + hero.power
+            avgHeroRank = avgHeroRank + (rankValues[hero.rank] or 1)
         end
-        if totalPower < quest.requiredPower then
-            table.insert(result.failureHints, "Party power (" .. totalPower .. ") was below requirement (" .. quest.requiredPower .. ")")
+        avgHeroRank = avgHeroRank / #heroList
+        if avgHeroRank < questRankValue then
+            table.insert(result.failureHints, "Party rank was below quest rank - risky but rewarding if successful!")
         end
 
         -- Stat hint

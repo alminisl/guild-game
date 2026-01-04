@@ -259,7 +259,14 @@ function Town.loadSprites()
         {x = 1100, y = 620, targetX = 850, targetY = 620, speed = 22, type = "archer", animOffset = 0.3, direction = -1},
         {x = 1300, y = 650, targetX = 1500, targetY = 650, speed = 20, type = "warrior", animOffset = 0.6, direction = 1},
         {x = 500, y = 700, targetX = 700, targetY = 700, speed = 23, type = "archer", animOffset = 0.9, direction = 1},
-        {x = 1400, y = 750, targetX = 1150, targetY = 750, speed = 21, type = "warrior", animOffset = 0.2, direction = -1}
+        {x = 1400, y = 750, targetX = 1150, targetY = 750, speed = 21, type = "warrior", animOffset = 0.2, direction = -1},
+        -- Pawns (villagers/workers)
+        {x = 450, y = 580, targetX = 650, targetY = 580, speed = 18, type = "pawn", animOffset = 0.1, direction = 1},
+        {x = 1200, y = 590, targetX = 1000, targetY = 590, speed = 16, type = "pawn_wood", animOffset = 0.4, direction = -1},
+        {x = 800, y = 720, targetX = 1000, targetY = 720, speed = 15, type = "pawn_gold", animOffset = 0.7, direction = 1},
+        {x = 1350, y = 680, targetX = 1150, targetY = 680, speed = 17, type = "pawn_meat", animOffset = 0.5, direction = -1},
+        {x = 600, y = 780, targetX = 800, targetY = 780, speed = 14, type = "pawn", animOffset = 0.8, direction = 1},
+        {x = 950, y = 820, targetX = 750, targetY = 820, speed = 16, type = "pawn_wood", animOffset = 0.2, direction = -1}
     }
 
     -- Load decorative house sprites
@@ -293,7 +300,15 @@ function Town.loadSprites()
         warrior_idle = "assets/Units/Blue Units/Warrior/Warrior_Idle.png",
         warrior_run = "assets/Units/Blue Units/Warrior/Warrior_Run.png",
         archer_idle = "assets/Units/Blue Units/Archer/Archer_Idle.png",
-        archer_run = "assets/Units/Blue Units/Archer/Archer_Run.png"
+        archer_run = "assets/Units/Blue Units/Archer/Archer_Run.png",
+        pawn_idle = "assets/Units/Blue Units/Pawn/Pawn_Idle.png",
+        pawn_run = "assets/Units/Blue Units/Pawn/Pawn_Run.png",
+        pawn_wood_idle = "assets/Units/Blue Units/Pawn/Pawn_Idle Wood.png",
+        pawn_wood_run = "assets/Units/Blue Units/Pawn/Pawn_Run Wood.png",
+        pawn_gold_idle = "assets/Units/Blue Units/Pawn/Pawn_Idle Gold.png",
+        pawn_gold_run = "assets/Units/Blue Units/Pawn/Pawn_Run Gold.png",
+        pawn_meat_idle = "assets/Units/Blue Units/Pawn/Pawn_Idle Meat.png",
+        pawn_meat_run = "assets/Units/Blue Units/Pawn/Pawn_Run Meat.png"
     }
     for name, path in pairs(npcFiles) do
         local success, img = pcall(love.graphics.newImage, path)

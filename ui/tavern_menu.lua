@@ -69,10 +69,9 @@ function TavernMenu.draw(gameData, Economy, GuildSystem)
             love.graphics.setColor(Components.colors.textDim)
             love.graphics.print((hero.race or "Human") .. " " .. hero.class .. " - Lv." .. hero.level, MENU.x + 155, y + 30)
 
-            -- Rank and Power on same line
+            -- Rank display
             love.graphics.setColor(Components.colors.warning)
             love.graphics.print("Rank: " .. hero.rank, MENU.x + 155, y + 50)
-            love.graphics.print("Power: " .. hero.power, MENU.x + 235, y + 50)
 
             -- Stats preview (shifted for bigger sprite)
             local statsX = MENU.x + 340

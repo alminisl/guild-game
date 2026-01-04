@@ -187,16 +187,14 @@ function Quests.generate(rank, template)
     local secondaryStats = generateSecondaryStats(template.requiredStat, rank, template.combat)
 
     -- Determine max heroes based on rank
-    -- D/C: 2 heroes base, 3 if high reward quest
-    -- B: 3 heroes base, 4 if high reward
-    -- A/S: 4-6 heroes (no real limit)
-    local baseMaxHeroes = {D = 2, C = 2, B = 3, A = 4, S = 6}
-    local maxHeroes = baseMaxHeroes[rank] or 2
+    -- All quests allow at least 4 heroes, higher ranks allow more
+    local baseMaxHeroes = {D = 4, C = 4, B = 4, A = 6, S = 6}
+    local maxHeroes = baseMaxHeroes[rank] or 4
 
-    -- Higher reward quests can have +1 hero slot
+    -- Higher reward quests can have +2 hero slots
     local rewardThresholds = {D = 45, C = 80, B = 150, A = 350, S = 800}
     if template.reward >= (rewardThresholds[rank] or 999) then
-        maxHeroes = maxHeroes + 1
+        maxHeroes = maxHeroes + 2
     end
 
     local quest = {
@@ -207,7 +205,6 @@ function Quests.generate(rank, template)
         faction = template.faction or "humans",
         reward = template.reward + math.random(-10, 10),
         xpReward = template.xpReward,
-        requiredPower = Quests.getRankPower(rank),
         requiredStat = template.requiredStat,
         secondaryStats = secondaryStats,  -- NEW: Secondary stat requirements
         materialBonus = template.materialBonus or false,
@@ -335,9 +332,9 @@ function Quests.generatePool(count, maxRank, isNight)
     return pool
 end
 
--- Check if a party meets quest requirements
-function Quests.canAssign(quest, partyPower)
-    return partyPower >= quest.requiredPower
+-- Check if a party can be assigned to a quest (always true now - no power gate)
+function Quests.canAssign(quest, heroes)
+    return #heroes > 0
 end
 
 -- Roll for possible rewards from quest completion
@@ -377,7 +374,6 @@ function Quests.calculateSuccessChance(quest, heroes, EquipmentSystem)
     local data = loadQuestData()
     local config = data.config
 
-    local totalPower = 0
     local totalPrimaryStat = 0
     local totalSecondaryStats = {}  -- Track each secondary stat total
     local totalLuck = 0
@@ -387,8 +383,13 @@ function Quests.calculateSuccessChance(quest, heroes, EquipmentSystem)
         totalSecondaryStats[secStat.stat] = 0
     end
 
+    -- Rank values for comparison
+    local rankValues = {D = 1, C = 2, B = 3, A = 4, S = 5}
+    local questRankValue = rankValues[quest.rank] or 1
+    local totalRankValue = 0
+
     for _, hero in ipairs(heroes) do
-        totalPower = totalPower + hero.power
+        totalRankValue = totalRankValue + (rankValues[hero.rank] or 1)
 
         -- Get injury penalty multiplier
         local injuryPenalty = hero.injuryState and injuryPenalties[hero.injuryState] or 1.0
@@ -416,9 +417,18 @@ function Quests.calculateSuccessChance(quest, heroes, EquipmentSystem)
         totalLuck = totalLuck + baseLuck + equipLuckBonus
     end
 
-    -- Base chance from power ratio
-    local powerRatio = totalPower / quest.requiredPower
-    local baseChance = math.min(0.60 + (powerRatio - 1) * 0.35, 0.98)
+    -- Base chance from rank comparison (average party rank vs quest rank)
+    local avgRankValue = totalRankValue / #heroes
+    local rankRatio = avgRankValue / questRankValue
+    local baseChance
+    if rankRatio >= 1 then
+        -- Adequately ranked or over-ranked: 60% to 98%
+        baseChance = math.min(0.60 + (rankRatio - 1) * 0.35, 0.98)
+    else
+        -- Under-ranked: scales from 15% (at ratio 0) to 60% (at ratio 1)
+        -- This allows risky plays with lower rank heroes
+        baseChance = 0.15 + (rankRatio * 0.45)
+    end
 
     -- Rank bonus from config
     local rankBonus = 0
@@ -620,14 +630,17 @@ function Quests.getSynergyBonuses(heroes, quest)
 end
 
 -- Resolve a quest (called when quest completes)
-function Quests.resolve(quest, heroes)
+-- partyLuckBonus: optional flat luck bonus from formed party
+function Quests.resolve(quest, heroes, partyLuckBonus)
+    partyLuckBonus = partyLuckBonus or 0
+
     local successChance = Quests.calculateSuccessChance(quest, heroes)
     local roll = math.random()
 
-    -- Calculate luck multiplier for reward rolls
+    -- Calculate luck multiplier for reward rolls (includes party bonus)
     local totalLuck = 0
     for _, hero in ipairs(heroes) do
-        totalLuck = totalLuck + hero.stats.luck
+        totalLuck = totalLuck + hero.stats.luck + partyLuckBonus
     end
     local avgLuck = #heroes > 0 and (totalLuck / #heroes) or 5
     local luckMultiplier = 1.0 + (avgLuck - 5) * 0.05

@@ -3,6 +3,7 @@
 
 local Components = require("ui.components")
 local SpriteSystem = require("systems.sprite_system")
+local PartySystem = require("systems.party_system")
 
 local GuildMenu = {}
 
@@ -31,6 +32,8 @@ local equipDropdownSlot = nil  -- Which slot's dropdown is open (weapon/armor/ac
 local equipDropdownItems = {}  -- Items available in dropdown
 local statDisplayMode = "bars"  -- "bars" or "graph" for hero detail popup
 local heroToFire = nil  -- Hero ID pending fire confirmation
+local questHeroScrollOffset = 0  -- Scroll offset for hero list in quest tab
+local questHeroListBounds = nil  -- Bounds for scroll area {x, y, w, h, maxScroll}
 
 -- Tooltip/hover state
 local mouseX, mouseY = 0, 0
@@ -52,6 +55,27 @@ function GuildMenu.resetState()
     synergyHelpHovered = false
     hoveredHeroId = nil
     heroToFire = nil
+    questHeroScrollOffset = 0
+    questHeroListBounds = nil
+end
+
+-- Handle mouse wheel scroll for hero list
+function GuildMenu.handleScroll(x, y, scrollY)
+    -- Only scroll when in quests tab with a quest selected
+    if currentTab ~= "quests" or not selectedQuest then return false end
+
+    -- Check if mouse is within the hero list bounds
+    if questHeroListBounds then
+        local b = questHeroListBounds
+        if x >= b.x and x <= b.x + b.w and y >= b.y and y <= b.y + b.h then
+            -- Scroll the list
+            questHeroScrollOffset = questHeroScrollOffset - scrollY * 40  -- 40px per scroll tick
+            -- Clamp scroll offset
+            questHeroScrollOffset = math.max(0, math.min(questHeroScrollOffset, b.maxScroll))
+            return true
+        end
+    end
+    return false
 end
 
 -- Update mouse position for hover effects (call from main update)
@@ -270,20 +294,12 @@ function drawHeroDetailPopup(hero, Heroes)
     love.graphics.setColor(Components.colors.text)
     love.graphics.print(hero.class .. " - Level " .. hero.level, popupX + 175, popupY + 62)
 
-    -- Power
-    love.graphics.setColor(Components.colors.warning)
-    love.graphics.print("Power: " .. hero.power, popupX + 175, popupY + 82)
-
     -- XP bar
     local xpPercent = hero.xpToLevel > 0 and (hero.xp / hero.xpToLevel) or 1
-    Components.drawProgressBar(popupX + 290, popupY + 82, 120, 16, xpPercent, {
+    Components.drawProgressBar(popupX + 175, popupY + 82, 150, 16, xpPercent, {
         fgColor = {0.5, 0.3, 0.7},
         text = hero.xp .. "/" .. hero.xpToLevel .. " XP"
     })
-
-    -- Pentagon stat chart (right side) - includes equipment bonuses
-    local pentagonX = popupX + popupW - 130
-    local pentagonY = popupY + 150
 
     -- Calculate effective stats (base + equipment + injury)
     local effectiveStats = {}
@@ -295,39 +311,17 @@ function drawHeroDetailPopup(hero, Heroes)
         effectiveStats[stat] = base + equipBonus
     end
 
-    -- Draw effective stats (with equipment) as main, base stats as inner reference
     local hasEquipment = false
     for stat, val in pairs(effectiveStats) do
         if val > baseStats[stat] then hasEquipment = true break end
     end
 
-    if hasEquipment then
-        -- Show effective stats as main filled area, base stats as white inner line
-        Components.drawPentagonChart(effectiveStats, pentagonX, pentagonY, 70, {
-            showLabels = true,
-            fillColor = {0.3, 0.7, 0.3, 0.5},   -- Green tint for equipped
-            lineColor = {0.4, 0.9, 0.4, 1},     -- Bright green outline
-            overlayStats = baseStats,
-            overlayColor = {1, 0.9, 0.3, 0.6}   -- Gold line showing base stats
-        })
-        -- Equipment indicator below pentagon
-        love.graphics.setColor(Components.colors.success)
-        love.graphics.printf("+ Gear", pentagonX - 35, pentagonY + 75, 70, "center")
-    else
-        -- No equipment - just show base stats in gold
-        Components.drawPentagonChart(effectiveStats, pentagonX, pentagonY, 70, {
-            showLabels = true,
-            fillColor = {0.8, 0.7, 0.2, 0.5},
-            lineColor = {1, 0.9, 0.3, 1}
-        })
-    end
-
-    -- Stats section (left side) with toggle button
+    -- Stats section header (left side)
     love.graphics.setColor(Components.colors.text)
     love.graphics.print("STATS", popupX + 20, popupY + 115)
 
-    -- Bars/Graph toggle button
-    local toggleBtnX = popupX + 80
+    -- Bars/Graph toggle button (right side)
+    local toggleBtnX = popupX + popupW - 110
     local toggleBtnY = popupY + 112
     local toggleBtnW = 90
     local toggleBtnH = 22
@@ -376,8 +370,9 @@ function drawHeroDetailPopup(hero, Heroes)
         injuryPenalty = injuryInfo.statPenalty or 1.0
     end
 
-    -- Only show bars when in bars mode
+    -- Stats display area (full width, below header)
     if statDisplayMode == "bars" then
+        -- Bars mode: show stat bars across full width
         for _, stat in ipairs(statData) do
             local baseValue = hero.stats[stat.key] or 0
             local effectiveValue = math.floor(baseValue * injuryPenalty)
@@ -386,20 +381,20 @@ function drawHeroDetailPopup(hero, Heroes)
             love.graphics.setColor(stat.color)
             love.graphics.print(stat.name, popupX + 30, statY)
 
-            -- Stat bar
-            local barW = 150
-            local barH = 12
+            -- Stat bar (wider now)
+            local barW = 200
+            local barH = 14
             love.graphics.setColor(0.2, 0.2, 0.2)
-            love.graphics.rectangle("fill", popupX + 70, statY + 2, barW, barH)
+            love.graphics.rectangle("fill", popupX + 70, statY + 1, barW, barH)
 
             -- Effective stat (with injury)
             love.graphics.setColor(stat.color[1] * 0.7, stat.color[2] * 0.7, stat.color[3] * 0.7)
-            love.graphics.rectangle("fill", popupX + 70, statY + 2, barW * math.min(effectiveValue / 20, 1), barH)
+            love.graphics.rectangle("fill", popupX + 70, statY + 1, barW * math.min(effectiveValue / 20, 1), barH)
 
             -- Equipment bonus
             if equipBonus > 0 then
                 love.graphics.setColor(stat.color)
-                love.graphics.rectangle("fill", popupX + 70 + barW * (effectiveValue / 20), statY + 2,
+                love.graphics.rectangle("fill", popupX + 70 + barW * (effectiveValue / 20), statY + 1,
                     barW * math.min(equipBonus / 20, 1 - effectiveValue / 20), barH)
             end
 
@@ -407,25 +402,24 @@ function drawHeroDetailPopup(hero, Heroes)
             love.graphics.setColor(Components.colors.text)
             if injuryPenalty < 1 then
                 love.graphics.setColor(Components.colors.injured)
-                love.graphics.print(effectiveValue, popupX + 230, statY)
+                love.graphics.print(effectiveValue, popupX + 280, statY)
                 love.graphics.setColor(Components.colors.textDim)
-                love.graphics.print("(" .. baseValue .. ")", popupX + 255, statY)
+                love.graphics.print("(" .. baseValue .. ")", popupX + 305, statY)
             else
-                love.graphics.print(baseValue, popupX + 230, statY)
+                love.graphics.print(baseValue, popupX + 280, statY)
             end
             if equipBonus > 0 then
                 love.graphics.setColor(Components.colors.success)
-                love.graphics.print("+" .. equipBonus, popupX + 285, statY)
+                love.graphics.print("+" .. equipBonus, popupX + 320, statY)
             end
 
             statY = statY + 22
         end
     else
-        -- Graph mode: show larger pentagon in center of stat area
-        local graphCenterX = popupX + 170
+        -- Graph mode: show large pentagon centered
+        local graphCenterX = popupX + popupW / 2
         local graphCenterY = popupY + 210
 
-        -- Show numerical values next to the pentagon
         if hasEquipment then
             Components.drawPentagonChart(effectiveStats, graphCenterX, graphCenterY, 85, {
                 showLabels = true,
@@ -434,6 +428,9 @@ function drawHeroDetailPopup(hero, Heroes)
                 overlayStats = baseStats,
                 overlayColor = {1, 0.9, 0.3, 0.6}
             })
+            -- Equipment indicator
+            love.graphics.setColor(Components.colors.success)
+            love.graphics.printf("+ Gear Bonuses", graphCenterX - 50, graphCenterY + 90, 100, "center")
         else
             Components.drawPentagonChart(effectiveStats, graphCenterX, graphCenterY, 85, {
                 showLabels = true,
@@ -443,7 +440,7 @@ function drawHeroDetailPopup(hero, Heroes)
         end
 
         -- Show stat values as compact list below pentagon
-        local valueY = graphCenterY + 95
+        local valueY = graphCenterY + 105
         love.graphics.setColor(Components.colors.textDim)
         local valueStr = ""
         for _, stat in ipairs(statData) do
@@ -672,6 +669,63 @@ function drawRosterTab(gameData, startY, height, Heroes, TimeSystem, GuildSystem
     local cardWidth = MENU.width - 40
     local y = startY + 25
 
+    -- Display formed parties section
+    PartySystem.initGameData(gameData)
+    if gameData.parties and #gameData.parties > 0 then
+        love.graphics.setColor(Components.colors.text)
+        love.graphics.print("Formed Parties", MENU.x + 20, y)
+        y = y + 20
+
+        for _, party in ipairs(gameData.parties) do
+            -- Party card background
+            Components.drawPanel(MENU.x + 20, y, cardWidth, 60, {
+                color = {0.25, 0.3, 0.4},
+                cornerRadius = 5
+            })
+
+            -- Party name
+            love.graphics.setColor(1, 0.9, 0.5)
+            love.graphics.print(party.name, MENU.x + 30, y + 5)
+
+            -- Party status
+            local statusText = PartySystem.getStatusText(party, gameData)
+            local statusColor = party.isFormed and PartySystem.allMembersQualified(party) and Components.colors.success or Components.colors.warning
+            love.graphics.setColor(statusColor)
+            love.graphics.print(statusText, MENU.x + 30, y + 22)
+
+            -- Party members (show names)
+            local memberNames = {}
+            local members = PartySystem.getPartyMembers(party, gameData)
+            for _, member in ipairs(members) do
+                local qualified = (party.questsTogether[member.id] or 0) >= PartySystem.config.questsToForm
+                local nameStr = member.name:match("^(%S+)") or member.name  -- First name only
+                if not qualified then
+                    nameStr = nameStr .. "*"  -- Mark unqualified members
+                end
+                table.insert(memberNames, nameStr)
+            end
+            love.graphics.setColor(Components.colors.textDim)
+            love.graphics.print("Members: " .. table.concat(memberNames, ", "), MENU.x + 30, y + 39)
+
+            -- Party bonuses indicator
+            if PartySystem.allMembersQualified(party) then
+                love.graphics.setColor(0.5, 0.8, 0.5)
+                love.graphics.print("Bonuses: Re-roll | +Luck | Cleric Protection", MENU.x + cardWidth - 280, y + 22)
+            end
+
+            -- Quests completed
+            love.graphics.setColor(Components.colors.textDim)
+            love.graphics.print("Quests: " .. party.totalQuestsCompleted, MENU.x + cardWidth - 100, y + 5)
+
+            y = y + 65
+        end
+
+        y = y + 10  -- Space between parties and heroes
+        love.graphics.setColor(Components.colors.text)
+        love.graphics.print("All Heroes", MENU.x + 20, y)
+        y = y + 20
+    end
+
     for i, hero in ipairs(gameData.heroes) do
         if y + cardHeight > MENU.y + MENU.height - 20 then break end
 
@@ -693,14 +747,35 @@ function drawRosterTab(gameData, startY, height, Heroes, TimeSystem, GuildSystem
 
         -- Hero info (shifted right for bigger sprite)
         love.graphics.setColor(Components.colors.text)
-        love.graphics.print(hero.name, MENU.x + 130, y + 15)
+        local heroNameDisplay = hero.name
+        -- Show party indicator if in a party
+        if hero.partyId then
+            local party = PartySystem.getParty(hero.partyId, gameData)
+            if party then
+                heroNameDisplay = heroNameDisplay .. " [" .. party.name:match("The (.+)") .. "]"
+            end
+        end
+        love.graphics.print(heroNameDisplay, MENU.x + 130, y + 15)
 
+        -- Show level with cap info
+        local maxLevelForRank = Heroes.getMaxLevelForRank(hero.rank)
+        local levelDisplay = "Lv." .. hero.level .. "/" .. maxLevelForRank
         love.graphics.setColor(Components.colors.textDim)
-        love.graphics.print((hero.race or "Human") .. " " .. hero.class .. " Lv." .. hero.level, MENU.x + 130, y + 35)
+        love.graphics.print((hero.race or "Human") .. " " .. hero.class .. " " .. levelDisplay, MENU.x + 130, y + 35)
 
-        -- Rank and Power on third line
+        -- Rank display with promotion status
         love.graphics.setColor(Components.colors.warning)
-        love.graphics.print("Rank: " .. hero.rank .. "  |  Power: " .. hero.power, MENU.x + 130, y + 55)
+        local rankDisplay = "Rank: " .. hero.rank
+        if Heroes.isAtRankMaxLevel(hero) then
+            if hero.rank ~= "S" then
+                love.graphics.setColor(0.5, 0.8, 1)  -- Blue for ready to promote
+                rankDisplay = rankDisplay .. " (Max - needs dungeon)"
+            else
+                love.graphics.setColor(1, 0.8, 0.3)  -- Gold for max rank
+                rankDisplay = rankDisplay .. " (Max Rank!)"
+            end
+        end
+        love.graphics.print(rankDisplay, MENU.x + 130, y + 55)
 
         -- Status with progress (centered vertically for taller card)
         local statusX = MENU.x + 380
@@ -760,11 +835,13 @@ function drawRosterTab(gameData, startY, height, Heroes, TimeSystem, GuildSystem
             love.graphics.print(injuryInfo.name:upper(), MENU.x + cardWidth - 150, y + 38)
         end
 
-        -- XP bar
-        local xpPercent = hero.xp / hero.xpToLevel
+        -- XP bar (show MAX if at level cap)
+        local xpPercent = hero.xpToLevel > 0 and (hero.xp / hero.xpToLevel) or 1
+        local xpText = hero.xpToLevel > 0 and "XP" or "MAX"
+        local xpColor = hero.xpToLevel > 0 and {0.5, 0.3, 0.7} or {0.3, 0.6, 0.8}
         Components.drawProgressBar(MENU.x + cardWidth - 80, y + 38, 70, 18, xpPercent, {
-            fgColor = {0.5, 0.3, 0.7},
-            text = "XP"
+            fgColor = xpColor,
+            text = xpText
         })
 
         y = y + cardHeight + 5
@@ -884,8 +961,7 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
         love.graphics.setColor(Components.colors.text)
         love.graphics.print("Party for: " .. selectedQuest.name, partyX, startY)
 
-        -- Party power display - count selected heroes properly
-        local partyPower = 0
+        -- Gather selected heroes
         local partyHeroes = {}
 
         -- Only count heroes that are actually selected AND still exist in roster
@@ -893,7 +969,6 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
             if isSelected == true then
                 for _, hero in ipairs(gameData.heroes) do
                     if hero.id == heroId and hero.status == "idle" then
-                        partyPower = partyPower + hero.power
                         table.insert(partyHeroes, hero)
                         break
                     end
@@ -906,11 +981,6 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
         local heroCountColor = #partyHeroes >= maxHeroes and Components.colors.warning or Components.colors.textDim
         love.graphics.setColor(heroCountColor)
         love.graphics.print(string.format("Heroes: %d/%d", #partyHeroes, maxHeroes), partyX, startY + 18)
-
-        local powerColor = partyPower >= selectedQuest.requiredPower and Components.colors.success or Components.colors.danger
-        love.graphics.setColor(powerColor)
-        love.graphics.print(string.format("Power: %d / %d needed", partyPower, selectedQuest.requiredPower),
-            partyX, startY + 34)
 
         -- Party stat totals for required stats (primary + secondary)
         local reqStat = selectedQuest.requiredStat or "str"
@@ -933,7 +1003,7 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
 
         -- Display stats inline (compact format)
         local statDisplayX = partyX
-        local statDisplayY = startY + 50
+        local statDisplayY = startY + 34
         love.graphics.setColor(Components.colors.textDim)
         love.graphics.print("Stats:", statDisplayX, statDisplayY)
 
@@ -1149,48 +1219,116 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
         end
 
         -- Available heroes list (positioned below the pentagon chart area)
-        local y = math.max(synergyY + 8, startY + 210)
-        for i, hero in ipairs(gameData.heroes) do
-            if y + 38 > MENU.y + MENU.height - 60 then break end
+        -- LARGER hero cards for better visibility with SCROLLING
+        local heroCardHeight = 70
+        local heroCardSpacing = 75
+        local listStartY = math.max(synergyY + 8, startY + 210)
+        local listHeight = MENU.y + MENU.height - 65 - listStartY  -- Available height for list
+        local scrollbarWidth = 12
 
+        -- Count idle heroes and calculate total content height
+        local idleHeroCount = 0
+        for _, hero in ipairs(gameData.heroes) do
             if hero.status == "idle" then
-                local isSelected = selectedHeroes[hero.id] == true
+                idleHeroCount = idleHeroCount + 1
+            end
+        end
+        local totalContentHeight = idleHeroCount * heroCardSpacing
+        local maxScroll = math.max(0, totalContentHeight - listHeight)
 
-                local bgColor = isSelected and {0.3, 0.5, 0.3} or Components.colors.panelLight
-                Components.drawPanel(partyX, y, partyWidth, 34, {
-                    color = bgColor,
-                    cornerRadius = 3
-                })
+        -- Store bounds for scroll detection
+        questHeroListBounds = {
+            x = partyX,
+            y = listStartY,
+            w = partyWidth,
+            h = listHeight,
+            maxScroll = maxScroll
+        }
 
-                -- Small sprite portrait
-                SpriteSystem.drawCentered(hero, partyX + 20, y + 17, 60, 60, "Idle")
+        -- Clamp scroll offset
+        questHeroScrollOffset = math.max(0, math.min(questHeroScrollOffset, maxScroll))
 
-                Components.drawRankBadge(hero.rank, partyX + 38, y + 5, 24)
-                love.graphics.setColor(Components.colors.text)
-                love.graphics.print(hero.name, partyX + 68, y + 9)
-                -- Show race and class
-                love.graphics.setColor(Components.colors.textDim)
-                love.graphics.print((hero.race or "Human") .. " " .. hero.class, partyX + 180, y + 9)
-                -- Show hero's relevant stat for this quest (with equipment bonus)
-                local heroStat = hero.stats[reqStat] or 0
-                local heroEquipBonus = _EquipmentSystem and _EquipmentSystem.getStatBonus(hero, reqStat) or 0
-                love.graphics.setColor(statColors[reqStat] or Components.colors.textDim)
-                if heroEquipBonus > 0 then
-                    love.graphics.printf(statNames[reqStat] .. ":" .. heroStat, partyX + partyWidth - 70, y + 9, 35, "right")
-                    love.graphics.setColor(Components.colors.success)
-                    love.graphics.printf("+" .. heroEquipBonus, partyX + partyWidth - 30, y + 9, 25, "right")
-                else
-                    love.graphics.printf(statNames[reqStat] .. ":" .. heroStat, partyX + partyWidth - 50, y + 9, 45, "right")
+        -- Set up scissor for clipping
+        love.graphics.setScissor(partyX, listStartY, partyWidth, listHeight)
+
+        -- Draw heroes with scroll offset
+        local y = listStartY - questHeroScrollOffset
+        for i, hero in ipairs(gameData.heroes) do
+            if hero.status == "idle" then
+                -- Only draw if visible (with some margin for partial visibility)
+                if y + heroCardHeight >= listStartY and y < listStartY + listHeight then
+                    local isSelected = selectedHeroes[hero.id] == true
+
+                    local bgColor = isSelected and {0.3, 0.5, 0.3} or Components.colors.panelLight
+                    Components.drawPanel(partyX, y, partyWidth - scrollbarWidth - 5, heroCardHeight, {
+                        color = bgColor,
+                        cornerRadius = 5
+                    })
+
+                    -- Larger sprite portrait (120x120 for better visibility)
+                    SpriteSystem.drawCentered(hero, partyX + 40, y + heroCardHeight / 2, 140, 140, "Idle")
+
+                    -- Rank badge (larger, repositioned)
+                    Components.drawRankBadge(hero.rank, partyX + 75, y + 10, 28)
+
+                    -- Hero name (larger area)
+                    love.graphics.setColor(Components.colors.text)
+                    love.graphics.print(hero.name, partyX + 110, y + 12)
+
+                    -- Show race and class on second line
+                    love.graphics.setColor(Components.colors.textDim)
+                    love.graphics.print((hero.race or "Human") .. " " .. hero.class, partyX + 110, y + 30)
+
+                    -- Level display
+                    love.graphics.setColor(Components.colors.text)
+                    love.graphics.print("Lv." .. hero.level, partyX + 110, y + 48)
+
+                    -- Show hero's relevant stat for this quest (with equipment bonus) - right side
+                    local heroStat = hero.stats[reqStat] or 0
+                    local heroEquipBonus = _EquipmentSystem and _EquipmentSystem.getStatBonus(hero, reqStat) or 0
+                    love.graphics.setColor(statColors[reqStat] or Components.colors.textDim)
+                    if heroEquipBonus > 0 then
+                        love.graphics.printf(statNames[reqStat] .. ":" .. heroStat, partyX + partyWidth - scrollbarWidth - 85, y + 25, 45, "right")
+                        love.graphics.setColor(Components.colors.success)
+                        love.graphics.printf("+" .. heroEquipBonus, partyX + partyWidth - scrollbarWidth - 35, y + 25, 25, "right")
+                    else
+                        love.graphics.printf(statNames[reqStat] .. ":" .. heroStat, partyX + partyWidth - scrollbarWidth - 65, y + 25, 55, "right")
+                    end
+
+                    -- Selection indicator
+                    if isSelected then
+                        love.graphics.setColor(0.3, 0.8, 0.3)
+                        love.graphics.printf("SELECTED", partyX + partyWidth - scrollbarWidth - 85, y + 48, 75, "right")
+                    end
                 end
 
-                y = y + 38
+                y = y + heroCardSpacing
             end
+        end
+
+        -- Reset scissor
+        love.graphics.setScissor()
+
+        -- Draw scrollbar if needed
+        if maxScroll > 0 then
+            local scrollbarX = partyX + partyWidth - scrollbarWidth
+            local scrollbarHeight = listHeight
+
+            -- Scrollbar track
+            love.graphics.setColor(0.2, 0.2, 0.25)
+            love.graphics.rectangle("fill", scrollbarX, listStartY, scrollbarWidth, scrollbarHeight, 3, 3)
+
+            -- Scrollbar thumb
+            local thumbHeight = math.max(30, scrollbarHeight * (listHeight / totalContentHeight))
+            local thumbY = listStartY + (questHeroScrollOffset / maxScroll) * (scrollbarHeight - thumbHeight)
+            love.graphics.setColor(0.5, 0.5, 0.6)
+            love.graphics.rectangle("fill", scrollbarX + 2, thumbY, scrollbarWidth - 4, thumbHeight, 3, 3)
         end
 
         -- Send Party button
         local btnY = MENU.y + MENU.height - 55
         local hasQuestSlot = not GuildSystem or GuildSystem.canStartQuest(gameData)
-        local canSend = partyPower >= selectedQuest.requiredPower and #partyHeroes > 0 and hasQuestSlot
+        local canSend = #partyHeroes > 0 and hasQuestSlot
 
         local btnText = hasQuestSlot and "Send Party" or "Quest Slots Full"
         Components.drawButton(btnText, partyX, btnY, partyWidth, 35, {
@@ -1606,32 +1744,43 @@ function GuildMenu.handleClick(x, y, gameData, QuestSystem, Quests, Heroes, Guil
                 return nil
             end
 
-            -- Hero selection - fixed position below pentagon chart
+            -- Hero selection - with scroll offset support
             -- This matches the drawing code: math.max(synergyY + 8, startY + 210)
             local heroListStartY = contentY + 210
+            local heroCardHeight = 70  -- Match the drawing code
+            local heroCardSpacing = 75  -- Match the drawing code
+            local listHeight = MENU.y + MENU.height - 65 - heroListStartY
 
-            -- Count currently selected heroes
-            local currentCount = 0
-            for _, isSelected in pairs(selectedHeroes) do
-                if isSelected then currentCount = currentCount + 1 end
-            end
-            local maxHeroes = selectedQuest.maxHeroes or 6
+            -- Only process clicks within the list bounds
+            if Components.isPointInRect(x, y, partyX, heroListStartY, partyWidth, listHeight) then
+                -- Count currently selected heroes
+                local currentCount = 0
+                for _, isSelected in pairs(selectedHeroes) do
+                    if isSelected then currentCount = currentCount + 1 end
+                end
+                local maxHeroes = selectedQuest.maxHeroes or 6
 
-            local heroY = heroListStartY
-            for i, hero in ipairs(gameData.heroes) do
-                if hero.status == "idle" then
-                    if Components.isPointInRect(x, y, partyX, heroY, partyWidth, 34) then
-                        if selectedHeroes[hero.id] then
-                            -- Always allow deselection
-                            selectedHeroes[hero.id] = nil
-                        elseif currentCount < maxHeroes then
-                            -- Only allow selection if under limit
-                            selectedHeroes[hero.id] = true
+                -- Apply scroll offset to click position
+                local heroY = heroListStartY - questHeroScrollOffset
+                for i, hero in ipairs(gameData.heroes) do
+                    if hero.status == "idle" then
+                        -- Check if this hero card is at the clicked position (accounting for scroll)
+                        local cardScreenY = heroY
+                        if y >= cardScreenY and y < cardScreenY + heroCardHeight
+                           and cardScreenY + heroCardHeight >= heroListStartY
+                           and cardScreenY < heroListStartY + listHeight then
+                            if selectedHeroes[hero.id] then
+                                -- Always allow deselection
+                                selectedHeroes[hero.id] = nil
+                            elseif currentCount < maxHeroes then
+                                -- Only allow selection if under limit
+                                selectedHeroes[hero.id] = true
+                            end
+                            -- If at limit and trying to select, do nothing (visual feedback via warning color)
+                            return nil
                         end
-                        -- If at limit and trying to select, do nothing (visual feedback via warning color)
-                        return nil
+                        heroY = heroY + heroCardSpacing
                     end
-                    heroY = heroY + 38
                 end
             end
 

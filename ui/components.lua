@@ -256,10 +256,6 @@ function Components.drawHeroCard(hero, x, y, w, h, options)
         love.graphics.print("Available", x + 50, y + 46)
     end
 
-    -- Power display
-    love.graphics.setColor(Components.colors.text)
-    love.graphics.printf("Power: " .. hero.power, x + w - 80, y + 10, 70, "right")
-
     -- Stats if expanded
     if showStats and h > 70 then
         local statsY = y + 65
@@ -302,10 +298,6 @@ function Components.drawQuestCard(quest, x, y, w, h, options)
 
     love.graphics.setColor(Components.colors.gold)
     love.graphics.printf(quest.reward .. " gold", x + w - 100, y + 10, 90, "right")
-
-    -- Power requirement
-    love.graphics.setColor(Components.colors.text)
-    love.graphics.printf("Req: " .. quest.requiredPower .. " power", x + w - 100, y + 28, 90, "right")
 
     -- XP reward
     love.graphics.setColor(Components.colors.textDim)

@@ -52,7 +52,9 @@ local gameData = {
         materials = {},    -- {material_id = count}
         equipment = {}     -- {equipment_id = count}
     },
-    graveyard = {}          -- Dead heroes (for display/resurrection)
+    graveyard = {},        -- Dead heroes (for display/resurrection)
+    parties = {},          -- Formed parties (4 heroes with different classes, 3+ quests together)
+    protoParties = {}      -- Proto-parties (forming, not yet official)
 }
 
 -- Track night state for transitions
@@ -496,5 +498,15 @@ function love.keypressed(key)
         local currentScale = TimeSystem.config.timeScale
         TimeSystem.setTimeScale(math.max(currentScale / 2, 0.5))
         addNotification("Time speed: " .. TimeSystem.config.timeScale .. "x", "info")
+    end
+end
+
+-- Mouse wheel handler for scrolling
+function love.wheelmoved(x, y)
+    local mx, my = love.mouse.getPosition()
+
+    -- Handle scroll in guild menu
+    if currentState == STATE.GUILD then
+        GuildMenu.handleScroll(mx, my, y)
     end
 end

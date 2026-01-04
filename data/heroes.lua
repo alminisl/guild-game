@@ -43,8 +43,8 @@ function Heroes.getConfig(key)
     return data.config[key]
 end
 
--- Rank power values (compatible with old code)
-Heroes.rankPower = setmetatable({}, {
+-- Rank values for difficulty scaling (used for rest time, etc.)
+Heroes.rankValue = setmetatable({}, {
     __index = function(_, rank)
         local data = loadHeroData()
         return data.config.rankPower[rank] or 1
@@ -163,8 +163,88 @@ function Heroes.getTitles(rank)
     return nil
 end
 
--- Max level cap
-Heroes.MAX_LEVEL = 10
+-- Max level cap (absolute maximum, S-rank)
+Heroes.MAX_LEVEL = 20
+
+-- Get max level for a specific rank
+function Heroes.getMaxLevelForRank(rank)
+    local data = loadHeroData()
+    if data.config.maxLevelByRank then
+        return data.config.maxLevelByRank[rank] or 20
+    end
+    return 20
+end
+
+-- Check if hero is at max level for their rank
+function Heroes.isAtRankMaxLevel(hero)
+    local maxLevel = Heroes.getMaxLevelForRank(hero.rank)
+    return hero.level >= maxLevel
+end
+
+-- Check if hero can be promoted (at max level + dungeon cleared)
+-- TODO: Add dungeon requirement when dungeon system is implemented
+function Heroes.canPromote(hero)
+    -- Can't promote S-rank
+    if hero.rank == "S" then
+        return false, "S-rank heroes cannot be promoted further"
+    end
+
+    -- Must be at max level for current rank
+    if not Heroes.isAtRankMaxLevel(hero) then
+        local maxLevel = Heroes.getMaxLevelForRank(hero.rank)
+        return false, "Must reach level " .. maxLevel .. " first"
+    end
+
+    -- TODO: Check dungeon completion when dungeon system is implemented
+    local dungeonsCleared = hero.dungeonsCleared or 0
+    if dungeonsCleared < 1 then
+        return false, "Must clear a dungeon to promote"
+    end
+
+    return true, "Ready for promotion"
+end
+
+-- Promote a hero to the next rank
+-- TODO: Call this from dungeon completion when dungeon system is implemented
+function Heroes.promote(hero)
+    local canPromote, reason = Heroes.canPromote(hero)
+    if not canPromote then
+        return false, reason
+    end
+
+    local rankOrder = {"D", "C", "B", "A", "S"}
+    local currentIndex = 1
+    for i, r in ipairs(rankOrder) do
+        if r == hero.rank then
+            currentIndex = i
+            break
+        end
+    end
+
+    -- Promote to next rank
+    local newRank = rankOrder[currentIndex + 1]
+    if not newRank then
+        return false, "Cannot promote beyond S-rank"
+    end
+
+    local oldRank = hero.rank
+    hero.rank = newRank
+
+    -- Reset dungeon counter for next promotion
+    hero.dungeonsCleared = 0
+
+    -- Bonus stats on promotion (+1 to all stats, respecting new rank's cap)
+    local data = loadHeroData()
+    local newStatCap = data.config.baseStats[newRank].cap or 20
+    for stat, value in pairs(hero.stats) do
+        hero.stats[stat] = math.min(newStatCap, value + 1)
+    end
+
+    -- Update hire cost to reflect new rank
+    hero.hireCost = data.config.rankCost[newRank] or hero.hireCost
+
+    return true, hero.name .. " promoted from " .. oldRank .. "-rank to " .. newRank .. "-rank!"
+end
 
 -- Injury system configuration
 -- Injured heroes can't quest - they must rest to recover
@@ -303,13 +383,6 @@ local function generateName(rank)
     return firstName .. " " .. lastName
 end
 
--- Calculate hero power based on rank and level
-function Heroes.calculatePower(rank, level)
-    local data = loadHeroData()
-    local basePower = data.config.rankPower[rank] or 1
-    local levelBonus = math.floor((level - 1) / 5)
-    return basePower + levelBonus
-end
 
 -- Generate a new hero
 function Heroes.generate(options)
@@ -357,6 +430,8 @@ function Heroes.generate(options)
 
     local classData = data.classes[class]
 
+    local rankMaxLevel = Heroes.getMaxLevelForRank(rank)
+
     local hero = {
         id = nextHeroId,
         name = options.name or generateName(rank),
@@ -365,12 +440,13 @@ function Heroes.generate(options)
         rank = rank,
         level = level,
         xp = 0,
-        xpToLevel = level < Heroes.MAX_LEVEL and (100 * level) or 0,
+        xpToLevel = level < rankMaxLevel and (100 * level) or 0,
         stats = generateStats(rank, class, race),
         status = "idle",
-        power = Heroes.calculatePower(rank, level),
         hireCost = data.config.rankCost[rank] or 100,
         isAwakened = classData and classData.isAwakened or false,
+        dungeonsCleared = 0,  -- Track dungeons cleared for promotion
+        partyId = nil,  -- ID of party this hero belongs to (if any)
         currentQuestId = nil,
         questPhase = nil,
         questProgress = 0,
@@ -466,34 +542,31 @@ end
 function Heroes.addXP(hero, amount)
     hero.xp = hero.xp + amount
 
+    -- Get the max level for this hero's current rank
+    local rankMaxLevel = Heroes.getMaxLevelForRank(hero.rank)
+    local data = loadHeroData()
+    local statCap = data.config.baseStats[hero.rank].cap or 20
+
     local leveledUp = false
-    while hero.xp >= hero.xpToLevel and hero.level < Heroes.MAX_LEVEL do
+    while hero.xp >= hero.xpToLevel and hero.xpToLevel > 0 and hero.level < rankMaxLevel do
         hero.xp = hero.xp - hero.xpToLevel
         hero.level = hero.level + 1
-        hero.xpToLevel = 100 * hero.level
-        hero.power = Heroes.calculatePower(hero.rank, hero.level)
+        hero.xpToLevel = hero.level < rankMaxLevel and (100 * hero.level) or 0
         leveledUp = true
 
+        -- Stat gain on level up (respects rank's stat cap)
         local statKeys = {"str", "dex", "int", "vit", "luck"}
         local randomStat = statKeys[math.random(#statKeys)]
-        hero.stats[randomStat] = math.min(20, hero.stats[randomStat] + 1)
+        hero.stats[randomStat] = math.min(statCap, hero.stats[randomStat] + 1)
     end
 
-    if hero.level >= Heroes.MAX_LEVEL then
+    -- At rank max level, XP is capped (need promotion to continue)
+    if hero.level >= rankMaxLevel then
         hero.xp = 0
         hero.xpToLevel = 0
     end
 
     return leveledUp
-end
-
--- Get total party power
-function Heroes.getPartyPower(heroList)
-    local totalPower = 0
-    for _, hero in ipairs(heroList) do
-        totalPower = totalPower + hero.power
-    end
-    return totalPower
 end
 
 -- Get hero's primary stat based on class
