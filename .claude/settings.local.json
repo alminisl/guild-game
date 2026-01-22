@@ -12,7 +12,14 @@
       "Bash(dir /s /b \"F:\\\\MyGames\\\\LovePrototype\\\\assets\\\\Terrain\\\\Resources\\\\Wood\\\\Trees\")",
       "Bash(dir /s /b \"F:\\\\MyGames\\\\LovePrototype\\\\assets\\\\Characters*\")",
       "Bash(timeout /t 2 /nobreak)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(if [ -d \"/c/Program Files/LOVE\" ])",
+      "Bash(then ls \"/c/Program Files/LOVE\"/*.exe)",
+      "Bash(elif [ -d \"/c/Program Files \\(x86\\)/LOVE\" ])",
+      "Bash(then ls \"/c/Program Files \\(x86\\)/LOVE\"/*.exe)",
+      "Bash(fi)",
+      "Bash(\"/c/Program Files/LOVE/love.exe\" .)",
+      "Bash(wc:*)"
     ]
   }
 }

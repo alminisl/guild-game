@@ -48,9 +48,16 @@ local clouds = {}
 -- Decorations (trees, rocks, bushes, sheep)
 local decorations = {}
 
+-- Stored tiles (from world layout, for roads/paths)
+local storedTiles = {}
+
 -- Hero departure/arrival animations
 local heroAnimations = {}  -- {hero, x, y, targetX, targetY, direction, type ("departing"/"arriving"), progress}
 local SpriteSystem = nil  -- Will be set when needed
+
+-- Edit mode support
+local editModeActive = false
+local editModeWorldLayout = nil  -- Reference to EditMode's worldLayout when in edit mode
 
 -- Forward declaration for hero animation function
 local updateAndDrawHeroAnimations
@@ -156,17 +163,36 @@ Town.buildings = {
     }
 }
 
--- Load world layout from JSON
+-- Load world layout from JSON (version 2 with buildings, decorations, NPCs)
 function Town.loadWorldLayout()
     local worldLayout, err = json.loadFile("data/world_layout.json")
 
     if not worldLayout then
         print("Failed to load world layout:", err)
-        print("Starting with empty world")
+        print("Using default buildings")
         decorations = {}
         townNPCs = {}
         movingSheep = {}
         return
+    end
+
+    -- Load buildings from JSON if version 2
+    if worldLayout.version and worldLayout.version >= 2 and worldLayout.buildings then
+        Town.buildings = {}
+        for _, b in ipairs(worldLayout.buildings) do
+            table.insert(Town.buildings, {
+                id = b.id,
+                name = b.name,
+                sprite = b.sprite,
+                x = b.x,
+                y = b.y,
+                scale = b.scale or 1.0,
+                clickable = b.clickable,
+                menuTarget = b.menuTarget,
+                description = b.description
+            })
+        end
+        print("Loaded", #Town.buildings, "buildings from JSON")
     end
 
     -- Load decorations
@@ -175,42 +201,96 @@ function Town.loadWorldLayout()
         for _, dec in ipairs(worldLayout.decorations) do
             table.insert(decorations, {
                 type = dec.type,
+                sprite = dec.sprite,  -- New: direct sprite path
                 x = dec.x,
                 y = dec.y,
                 scale = dec.scale or 1.0,
                 layer = dec.layer or 1,
-                animOffset = dec.animOffset or 0.0
+                animOffset = dec.animOffset or 0.0,
+                -- Animation settings
+                animated = dec.animated or false,
+                frameCount = dec.frameCount or 1,
+                fps = dec.fps or 8
             })
         end
     end
 
-    -- Load NPCs
+    -- Load NPCs with behavior support (version 2)
     townNPCs = {}
     if worldLayout.npcs then
         for _, npc in ipairs(worldLayout.npcs) do
-            table.insert(townNPCs, {
-                x = npc.startX,
-                y = npc.startY,
-                targetX = npc.endX,
-                targetY = npc.endY,
-                speed = npc.speed or 20,
+            local npcData = {
+                x = npc.x or npc.startX or 500,
+                y = npc.y or npc.startY or 500,
+                speed = npc.speed or 30,
                 type = npc.type,
-                animOffset = math.random() * 2, -- Random animation offset
-                direction = (npc.endX > npc.startX) and 1 or -1,
-                scale = npc.scale or 0.8
+                sprite = npc.sprite,  -- New: direct sprite path
+                behavior = npc.behavior or "idle",
+                scale = npc.scale or 0.8,
+                animOffset = math.random() * 2,
+                direction = 1,
+                -- Animation settings
+                animated = npc.animated or false,
+                frameCount = npc.frameCount or 1,
+                fps = npc.fps or 8
+            }
+
+            -- Behavior-specific fields
+            if npc.behavior == "patrol" then
+                npcData.waypoints = npc.waypoints or {{npc.x, npc.y}}
+                npcData.currentWaypoint = 1
+                npcData.loop = npc.loop ~= false  -- Default true
+                npcData.goingForward = true
+            elseif npc.behavior == "wander" then
+                npcData.radius = npc.radius or 100
+                npcData.originX = npcData.x
+                npcData.originY = npcData.y
+                npcData.targetX = npcData.x
+                npcData.targetY = npcData.y
+                npcData.waitTime = 0
+                npcData.minWait = npc.minWait or 1.0
+                npcData.maxWait = npc.maxWait or 3.0
+            elseif npc.behavior == "idle" then
+                -- Idle NPCs just stand in place
+                npcData.facing = npc.facing or "right"
+            else
+                -- Legacy format (startX/endX)
+                npcData.targetX = npc.endX or (npc.x + 200)
+                npcData.targetY = npc.endY or npc.y
+                npcData.direction = (npcData.targetX > npcData.x) and 1 or -1
+            end
+
+            table.insert(townNPCs, npcData)
+        end
+    end
+
+    -- Keep movingSheep empty for now
+    movingSheep = {}
+
+    -- Load tiles
+    storedTiles = {}
+    if worldLayout.tiles then
+        for _, tile in ipairs(worldLayout.tiles) do
+            table.insert(storedTiles, {
+                x = tile.x,
+                y = tile.y,
+                tilesetPath = tile.tilesetPath,
+                tileX = tile.tileX,
+                tileY = tile.tileY,
+                tileSize = tile.tileSize
             })
         end
     end
 
-    -- Keep movingSheep empty for now (can be added to JSON later if needed)
-    movingSheep = {}
-
-    print("World layout loaded:", #decorations, "decorations,", #townNPCs, "NPCs")
+    print("World layout loaded:", #decorations, "decorations,", #townNPCs, "NPCs,", #storedTiles, "tiles")
 end
 
 -- Load all sprites
 function Town.loadSprites()
     if spritesLoaded then return end
+
+    -- Load world layout first (this may update Town.buildings from JSON)
+    Town.loadWorldLayout()
 
     -- Load building sprites
     for _, building in ipairs(Town.buildings) do
@@ -218,6 +298,8 @@ function Town.loadSprites()
             local success, img = pcall(love.graphics.newImage, building.sprite)
             if success then
                 sprites[building.id] = img
+            else
+                print("Failed to load building sprite:", building.sprite)
             end
         end
     end
@@ -290,9 +372,6 @@ function Town.loadSprites()
         {sprite = "cloud2", x = 1450, y = 70, speed = 9, scale = 0.75},
         {sprite = "cloud3", x = 1800, y = 45, speed = 11, scale = 0.65}
     }
-
-    -- Load world layout from JSON (decorations, NPCs, etc.)
-    Town.loadWorldLayout()
 
     -- Load decorative house sprites
     local houseFiles = {
@@ -451,18 +530,94 @@ local function drawBuilding(building, isHovered, mouseX, mouseY)
     end
 end
 
--- Draw decoration (tree, rock, bush, sheep, houses)
+-- Sprite cache for custom decoration sprites
+local decorationSpriteCache = {}
+
+-- Sprite cache for tilesets
+local tilesetSpriteCache = {}
+
+-- Get tileset sprite
+local function getTilesetSprite(path)
+    if not tilesetSpriteCache[path] then
+        local success, img = pcall(love.graphics.newImage, path)
+        if success then
+            tilesetSpriteCache[path] = img
+            img:setFilter("nearest", "nearest")
+        end
+    end
+    return tilesetSpriteCache[path]
+end
+
+-- Draw stored tiles
+local function drawStoredTiles()
+    local tilesToRender = storedTiles
+    if editModeActive and editModeWorldLayout and editModeWorldLayout.tiles then
+        tilesToRender = editModeWorldLayout.tiles
+    end
+
+    if not tilesToRender then return end
+
+    for _, tile in ipairs(tilesToRender) do
+        local sprite = getTilesetSprite(tile.tilesetPath)
+        if sprite then
+            local sw, sh = sprite:getDimensions()
+            local quad = love.graphics.newQuad(
+                tile.tileX * tile.tileSize,
+                tile.tileY * tile.tileSize,
+                tile.tileSize, tile.tileSize,
+                sw, sh
+            )
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.draw(sprite, quad, tile.x, tile.y)
+        end
+    end
+end
+
+-- Get decoration sprite (either from type or custom path)
+local function getDecorationSprite(dec)
+    -- If has custom sprite path, load it
+    if dec.sprite then
+        if not decorationSpriteCache[dec.sprite] then
+            local success, img = pcall(love.graphics.newImage, dec.sprite)
+            if success then
+                decorationSpriteCache[dec.sprite] = img
+                img:setFilter("nearest", "nearest")
+            end
+        end
+        return decorationSpriteCache[dec.sprite]
+    end
+
+    -- Otherwise use type-based sprites
+    return terrainSprites[dec.type]
+end
+
+-- Draw decoration (tree, rock, bush, sheep, houses, or custom sprites)
 local function drawDecoration(dec)
-    local sprite = terrainSprites[dec.type]
+    local sprite = getDecorationSprite(dec)
     if not sprite then return end
 
     local scale = dec.scale or 1.0
     local spriteW = sprite:getWidth()
     local spriteH = sprite:getHeight()
 
-    -- Handle animated sprites (spritesheets with horizontal frames)
-    if dec.type:find("tree") or dec.type:find("bush") or dec.type == "sheep" then
-        -- Frame width equals frame height for these sprites
+    -- Check if this decoration should be animated
+    if dec.animated and dec.frameCount and dec.frameCount > 1 then
+        -- Use animation settings from JSON
+        local frameWidth = math.floor(spriteW / dec.frameCount)
+        local totalFrames = dec.frameCount
+        local fps = dec.fps or 8
+
+        local animOffset = dec.animOffset or 0
+        local frame = math.floor((animTime + animOffset) * fps) % totalFrames
+
+        local quad = love.graphics.newQuad(frame * frameWidth, 0, frameWidth, spriteH, sprite:getDimensions())
+
+        love.graphics.setColor(1, 1, 1)
+        -- Draw anchored at bottom center
+        love.graphics.draw(sprite, quad, dec.x - (frameWidth * scale) / 2, dec.y - spriteH * scale, 0, scale, scale)
+
+    elseif dec.type and (dec.type:find("tree") or dec.type:find("bush") or dec.type == "sheep") then
+        -- Legacy handling for built-in animated sprites
         local frameWidth = spriteH
         local totalFrames = math.floor(spriteW / frameWidth)
         if totalFrames < 1 then totalFrames = 1 end
@@ -481,7 +636,7 @@ local function drawDecoration(dec)
         -- Draw anchored at bottom center, position is fixed
         love.graphics.draw(sprite, quad, dec.x - (frameWidth * scale) / 2, dec.y - spriteH * scale, 0, scale, scale)
     else
-        -- Static sprites (rocks, water rocks, houses)
+        -- Static sprites (rocks, water rocks, houses, custom non-animated)
         love.graphics.setColor(1, 1, 1)
         love.graphics.draw(sprite, dec.x - (spriteW * scale) / 2, dec.y - spriteH * scale, 0, scale, scale)
     end
@@ -525,44 +680,231 @@ local function updateAndDrawSheep(dt)
     end
 end
 
--- Update and draw wandering NPCs
-local function updateAndDrawNPCs(dt)
-    if not townNPCs then return end
+-- Sprite cache for custom NPC sprites
+local npcSpriteCache = {}
 
-    for _, npc in ipairs(townNPCs) do
-        -- Move towards target
-        local dx = npc.targetX - npc.x
-        if math.abs(dx) < 2 then
-            -- Reached target, pick new random target
-            npc.direction = npc.direction * -1
-            if npc.direction > 0 then
-                npc.targetX = npc.x + math.random(100, 200)
+-- Get NPC sprite (either from type or custom path)
+local function getNPCSprite(npc, isMoving)
+    -- If has custom sprite path, load it
+    if npc.sprite then
+        local spritePath = npc.sprite
+
+        -- For wandering NPCs, swap between _Idle and _Move sprites based on movement
+        if npc.behavior == "wander" or npc.behavior == "patrol" then
+            if isMoving then
+                -- Try to use _Move variant
+                spritePath = spritePath:gsub("_Idle", "_Move")
+                spritePath = spritePath:gsub("-Idle", "-Move")
             else
-                npc.targetX = npc.x - math.random(100, 200)
+                -- Try to use _Idle variant
+                spritePath = spritePath:gsub("_Move", "_Idle")
+                spritePath = spritePath:gsub("-Move", "-Idle")
             end
-            -- Clamp to grass area (larger map)
-            npc.targetX = math.max(350, math.min(1550, npc.targetX))
-        else
-            npc.x = npc.x + (npc.direction * npc.speed * dt)
         end
 
-        -- Get sprite based on movement
-        local spriteKey = npc.type .. "_run"
-        local sprite = terrainSprites[spriteKey]
-        if not sprite then return end
+        if not npcSpriteCache[spritePath] then
+            local success, img = pcall(love.graphics.newImage, spritePath)
+            if success then
+                npcSpriteCache[spritePath] = img
+                img:setFilter("nearest", "nearest")
+            else
+                -- Fallback to original sprite if variant doesn't exist
+                spritePath = npc.sprite
+                if not npcSpriteCache[spritePath] then
+                    success, img = pcall(love.graphics.newImage, spritePath)
+                    if success then
+                        npcSpriteCache[spritePath] = img
+                        img:setFilter("nearest", "nearest")
+                    end
+                end
+            end
+        end
+        return npcSpriteCache[spritePath]
+    end
 
-        local spriteH = sprite:getHeight()
-        local frameWidth = spriteH
-        local totalFrames = math.floor(sprite:getWidth() / frameWidth)
-        if totalFrames < 1 then totalFrames = 1 end
+    -- Otherwise use type-based sprites
+    local spriteKey = npc.type .. (isMoving and "_run" or "_idle")
+    return terrainSprites[spriteKey]
+end
 
-        local frame = math.floor((animTime + npc.animOffset) * 6) % totalFrames
-        local quad = love.graphics.newQuad(frame * frameWidth, 0, frameWidth, spriteH, sprite:getDimensions())
+-- Update and draw NPCs with behavior support
+local function updateAndDrawNPCs(dt)
+    -- In edit mode, read directly from edit mode's world layout for live updates
+    local npcsToRender = townNPCs
+    if editModeActive and editModeWorldLayout and editModeWorldLayout.npcs then
+        npcsToRender = editModeWorldLayout.npcs
+    end
 
-        love.graphics.setColor(1, 1, 1)
-        local scale = 0.8
-        local scaleX = scale * npc.direction
-        love.graphics.draw(sprite, quad, npc.x, npc.y - spriteH * scale, 0, scaleX, scale, frameWidth/2, 0)
+    if not npcsToRender then return end
+
+    for _, npc in ipairs(npcsToRender) do
+        local isMoving = false
+
+        -- Update based on behavior (skip movement updates in edit mode)
+        if editModeActive then
+            -- In edit mode, just render at current position without behavior updates
+            npc.direction = npc.direction or 1
+        elseif npc.behavior == "idle" then
+            -- Idle: just stand in place
+            npc.direction = (npc.facing == "left") and -1 or 1
+
+        elseif npc.behavior == "patrol" then
+            -- Patrol: move through waypoints
+            if npc.waypoints and #npc.waypoints > 0 then
+                local target = npc.waypoints[npc.currentWaypoint]
+                if target then
+                    local dx = target[1] - npc.x
+                    local dy = target[2] - npc.y
+                    local dist = math.sqrt(dx * dx + dy * dy)
+
+                    if dist < 5 then
+                        -- Reached waypoint, move to next
+                        if npc.goingForward then
+                            if npc.currentWaypoint < #npc.waypoints then
+                                npc.currentWaypoint = npc.currentWaypoint + 1
+                            elseif npc.loop then
+                                npc.currentWaypoint = 1
+                            else
+                                npc.goingForward = false
+                                npc.currentWaypoint = npc.currentWaypoint - 1
+                            end
+                        else
+                            if npc.currentWaypoint > 1 then
+                                npc.currentWaypoint = npc.currentWaypoint - 1
+                            else
+                                npc.goingForward = true
+                                npc.currentWaypoint = npc.currentWaypoint + 1
+                            end
+                        end
+                    else
+                        -- Move towards target
+                        local moveX = (dx / dist) * npc.speed * dt
+                        local moveY = (dy / dist) * npc.speed * dt
+                        npc.x = npc.x + moveX
+                        npc.y = npc.y + moveY
+                        npc.direction = dx > 0 and 1 or -1
+                        isMoving = true
+                    end
+                end
+            end
+
+        elseif npc.behavior == "wander" then
+            -- Wander: move randomly within radius
+            if npc.waitTime > 0 then
+                npc.waitTime = npc.waitTime - dt
+            else
+                local dx = npc.targetX - npc.x
+                local dy = npc.targetY - npc.y
+                local dist = math.sqrt(dx * dx + dy * dy)
+
+                if dist < 5 then
+                    -- Pick new random target
+                    local angle = math.random() * math.pi * 2
+                    local radius = math.random() * npc.radius
+                    npc.targetX = npc.originX + math.cos(angle) * radius
+                    npc.targetY = npc.originY + math.sin(angle) * radius
+                    npc.waitTime = npc.minWait + math.random() * (npc.maxWait - npc.minWait)
+                else
+                    -- Move towards target
+                    local moveX = (dx / dist) * npc.speed * dt
+                    local moveY = (dy / dist) * npc.speed * dt
+                    npc.x = npc.x + moveX
+                    npc.y = npc.y + moveY
+                    npc.direction = dx > 0 and 1 or -1
+                    isMoving = true
+                end
+            end
+
+        else
+            -- Legacy behavior (simple back-and-forth)
+            local dx = npc.targetX - npc.x
+            if math.abs(dx) < 2 then
+                npc.direction = npc.direction * -1
+                if npc.direction > 0 then
+                    npc.targetX = npc.x + math.random(100, 200)
+                else
+                    npc.targetX = npc.x - math.random(100, 200)
+                end
+                npc.targetX = math.max(350, math.min(1550, npc.targetX))
+            else
+                npc.x = npc.x + (npc.direction * npc.speed * dt)
+                isMoving = true
+            end
+        end
+
+        -- Track movement state changes to reset animation timer
+        if npc.wasMoving == nil then
+            npc.wasMoving = isMoving
+            npc.stateAnimTime = 0
+        end
+
+        -- Reset animation timer when movement state changes
+        if npc.wasMoving ~= isMoving then
+            npc.stateAnimTime = 0
+            npc.wasMoving = isMoving
+        else
+            npc.stateAnimTime = (npc.stateAnimTime or 0) + dt
+        end
+
+        -- Draw the NPC
+        local sprite = getNPCSprite(npc, isMoving)
+        if not sprite then
+            -- Fallback: draw a simple rectangle
+            love.graphics.setColor(0.5, 0.5, 0.8)
+            love.graphics.rectangle("fill", npc.x - 20, npc.y - 60, 40, 60)
+        else
+            local spriteH = sprite:getHeight()
+            local spriteW = sprite:getWidth()
+            local frameWidth, totalFrames, fps
+
+            -- Use animation settings if available
+            -- For wandering NPCs, use moveFrameCount when moving (if specified)
+            local frameCount = npc.frameCount
+            if isMoving and npc.moveFrameCount then
+                frameCount = npc.moveFrameCount
+            elseif not isMoving and npc.idleFrameCount then
+                frameCount = npc.idleFrameCount
+            end
+
+            -- Use separate fps for move vs idle if specified
+            local animFps = npc.fps or 8
+            if isMoving and npc.moveFps then
+                animFps = npc.moveFps
+            elseif not isMoving and npc.idleFps then
+                animFps = npc.idleFps
+            end
+
+            if npc.animated and frameCount and frameCount > 1 then
+                frameWidth = math.floor(spriteW / frameCount)
+                totalFrames = frameCount
+                fps = animFps
+            else
+                -- Default: assume square frames (auto-detect from sprite dimensions)
+                frameWidth = spriteH
+                totalFrames = math.floor(spriteW / frameWidth)
+                if totalFrames < 1 then totalFrames = 1 end
+                fps = 6  -- Default animation speed
+            end
+
+            local frame = 0
+            -- Use per-NPC state animation timer to avoid flickering when switching states
+            local stateTime = npc.stateAnimTime or 0
+            -- Animate if moving, or if animated and not idle behavior
+            if npc.animated then
+                frame = math.floor(stateTime * fps) % totalFrames
+            elseif isMoving or npc.behavior ~= "idle" then
+                frame = math.floor(stateTime * fps) % totalFrames
+            end
+
+            local quad = love.graphics.newQuad(frame * frameWidth, 0, frameWidth, spriteH, sprite:getDimensions())
+
+            love.graphics.setColor(1, 1, 1)
+            local scale = npc.scale or 0.8
+            local direction = npc.direction or 1
+            local scaleX = scale * direction
+            -- Draw anchored at bottom-center: origin at (frameWidth/2, spriteH) so position is feet
+            love.graphics.draw(sprite, quad, npc.x, npc.y, 0, scaleX, scale, frameWidth/2, spriteH)
+        end
     end
 end
 
@@ -759,9 +1101,15 @@ function Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
     love.graphics.translate(offsetX, offsetY)
     love.graphics.scale(currentScale, currentScale)
 
-    -- Draw water rocks (layer 0 - in water)
-    for _, dec in ipairs(decorations) do
-        if dec.layer == 0 then
+    -- Get decorations source (live from edit mode, or cached)
+    local decsToRender = decorations
+    if editModeActive and editModeWorldLayout and editModeWorldLayout.decorations then
+        decsToRender = editModeWorldLayout.decorations
+    end
+
+    -- Draw water rocks (layer 0 - in water, before grass platform)
+    for _, dec in ipairs(decsToRender) do
+        if (dec.layer or 1) == 0 then
             drawDecoration(dec)
         end
     end
@@ -769,60 +1117,73 @@ function Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
     -- Draw main grass platform (larger for 1920x1080)
     drawGrassPlatform(100, 140, 27, 13)
 
-    -- Draw roads (on top of grass, below buildings)
-    drawRoads()
+    -- Draw painted tiles (paths, roads, etc.)
+    drawStoredTiles()
 
-    -- Draw market square decorations
-    drawMarketSquare()
+    -- Roads and market square removed - use Edit Mode to place custom decorations instead
+    -- drawRoads()
+    -- drawMarketSquare()
 
-    -- Draw decorations layer 1 (behind buildings)
-    for _, dec in ipairs(decorations) do
-        if dec.layer == 1 then
-            drawDecoration(dec)
+    -- Collect ALL drawable items for layer + Y-sorting
+    local drawables = {}
+
+    -- Add decorations (layer 1+)
+    for _, dec in ipairs(decsToRender) do
+        local layer = dec.layer or 1
+        if layer >= 1 then
+            -- Get bottom Y for depth sorting
+            local sprite = getDecorationSprite(dec)
+            local sortY = dec.y  -- decorations anchor at bottom
+            table.insert(drawables, {
+                type = "decoration",
+                data = dec,
+                layer = layer,
+                y = sortY
+            })
         end
     end
-
-    -- Collect all drawable items for Y-sorting
-    local drawables = {}
 
     -- Add buildings
     for _, building in ipairs(Town.buildings) do
         local sprite = sprites[building.id]
         if sprite then
             local h = sprite:getHeight() * (building.scale or 1)
+            local layer = building.layer or 2  -- Default buildings to layer 2
             table.insert(drawables, {
                 type = "building",
                 data = building,
-                y = building.y + h,
-                isHovered = Town.getBuildingAt(mouseX, mouseY) == building.id  -- Uses original coords for getBuildingAt
+                layer = layer,
+                y = building.y + h,  -- buildings anchor at top, so bottom = y + h
+                isHovered = Town.getBuildingAt(mouseX, mouseY) == building.id
             })
         end
     end
 
-    -- Sort by Y position
-    table.sort(drawables, function(a, b) return a.y < b.y end)
+    -- Sort by layer first, then by Y position within each layer
+    table.sort(drawables, function(a, b)
+        if a.layer ~= b.layer then
+            return a.layer < b.layer
+        end
+        return a.y < b.y
+    end)
 
-    -- Draw sorted items
+    -- Draw sorted items (decorations and buildings)
     for _, item in ipairs(drawables) do
         if item.type == "building" then
             drawBuilding(item.data, item.isHovered, designMouseX, designMouseY)
+        elseif item.type == "decoration" then
+            drawDecoration(item.data)
         end
     end
 
     -- Draw moving sheep and NPCs in the market area
+    -- NPCs are drawn separately as they have their own update logic
     local dt = love.timer.getDelta()
     updateAndDrawSheep(dt)
     updateAndDrawNPCs(dt)
 
     -- Draw hero departure/arrival animations
     updateAndDrawHeroAnimations(dt)
-
-    -- Draw decorations layer 2 (in front)
-    for _, dec in ipairs(decorations) do
-        if dec.layer == 2 then
-            drawDecoration(dec)
-        end
-    end
 
     -- Draw clouds (floating)
     for _, cloud in ipairs(clouds) do
@@ -903,19 +1264,19 @@ function Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
         love.graphics.print("Fallen: " .. #gameData.graveyard, 1280, 16)
     end
 
-    -- Instructions (centered for larger screen)
-    love.graphics.setColor(1, 1, 1, 0.8)
-    love.graphics.printf("Click a building to enter", 0, SCREEN_H - 40, SCREEN_W, "center")
 end
 
 -- Get building ID at mouse position (screen coordinates)
+-- Returns building ID for clickable buildings (used by main.lua to change state)
 function Town.getBuildingAt(x, y)
     -- Transform screen coordinates to design coordinates
     updateScale()
     local designX, designY = Town.screenToDesign(x, y)
 
     for _, building in ipairs(Town.buildings) do
-        if building.name then
+        -- Check if building is clickable (either has name or clickable=true)
+        local isClickable = building.name or building.clickable
+        if isClickable then
             local sprite = sprites[building.id]
             if sprite then
                 local scale = building.scale or 1.0
@@ -925,6 +1286,11 @@ function Town.getBuildingAt(x, y)
                 local by = building.y
 
                 if Components.isPointInRect(designX, designY, bx, by, w, h) then
+                    -- Return lowercase building id for main.lua compatibility
+                    -- Use menuTarget if set (but convert to lowercase), otherwise use id
+                    if building.menuTarget then
+                        return string.lower(building.menuTarget)
+                    end
                     return building.id
                 end
             end
@@ -1045,6 +1411,14 @@ end
 -- Clear all animations
 function Town.clearAnimations()
     heroAnimations = {}
+end
+
+-- Set edit mode state (called from main.lua)
+function Town.setEditMode(active, worldLayoutRef)
+    editModeActive = active
+    editModeWorldLayout = worldLayoutRef
+    -- In edit mode, we read directly from editModeWorldLayout in the render functions
+    -- This ensures live updates when dragging objects or changing properties
 end
 
 return Town

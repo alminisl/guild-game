@@ -417,6 +417,19 @@ end
 
 -- Handle mouse press
 function love.mousepressed(x, y, button)
+    -- Handle right-click for Edit Mode copy/paste
+    if button == 2 and currentState == STATE.EDIT_MODE then
+        local result, message = EditMode.handleRightClick(x, y, gameData)
+        if result == "copied" then
+            addNotification(message, "info")
+        elseif result == true then
+            -- Paste successful, refresh Town's view
+            Town.setEditMode(true, EditMode.getWorldLayout())
+            addNotification(message, "success")
+        end
+        return
+    end
+
     if button ~= 1 then return end
 
     -- Quest result modal takes priority
@@ -537,8 +550,13 @@ function love.mousepressed(x, y, button)
         local result, message = EditMode.handleMousePressed(x, y, gameData)
         if result == "exit" then
             currentState = STATE.TOWN
+            -- Exit edit mode and reload from JSON
+            Town.setEditMode(false, nil)
+            Town.loadWorldLayout()
             addNotification("Edit Mode closed", "info")
         elseif result == "saved" then
+            -- Refresh Town's view from EditMode's current world layout
+            Town.setEditMode(true, EditMode.getWorldLayout())
             addNotification(message or "World layout saved!", "success")
         elseif result == "error" then
             addNotification(message, "error")
@@ -562,16 +580,32 @@ function love.keypressed(key)
         return
     end
 
+    -- Handle Edit Mode keys first
+    if currentState == STATE.EDIT_MODE then
+        local handled, result, msg = EditMode.handleKeyPressed(key)
+        if handled then
+            if result == "saved" then
+                addNotification(msg or "Saved!", "success")
+            end
+            return
+        end
+    end
+
     if key == "escape" then
-        if currentState ~= STATE.TOWN then
+        if currentState == STATE.EDIT_MODE then
+            currentState = STATE.TOWN
+            Town.setEditMode(false, nil)
+            Town.loadWorldLayout()
+            addNotification("Edit Mode closed", "info")
+        elseif currentState == STATE.TOWN then
+            currentState = STATE.SETTINGS
+        else
             currentState = STATE.TOWN
             GuildMenu.resetState()
             PotionMenu.resetState()
             ArmoryMenu.resetState()
             SaveMenu.resetState()
             SettingsMenu.resetState()
-        else
-            love.event.quit()
         end
 
     -- F5: Quick save to slot 1
@@ -581,6 +615,45 @@ function love.keypressed(key)
             addNotification("Game saved!", "success")
         else
             addNotification("Save failed: " .. msg, "error")
+        end
+
+    -- F6: Hot reload UI modules
+    elseif key == "f6" then
+        local reloaded = {}
+        local failed = {}
+
+        -- List of modules to reload
+        local modules = {
+            {"ui/guild_menu", function(m) GuildMenu = m end},
+            {"ui/tavern_menu", function(m) TavernMenu = m end},
+            {"ui/potion_menu", function(m) PotionMenu = m end},
+            {"ui/armory_menu", function(m) ArmoryMenu = m end},
+            {"ui/settings_menu", function(m) SettingsMenu = m end},
+            {"ui/town", function(m) Town = m; Town.loadSprites() end},
+            {"ui/components", function(m) Components = m end},
+            {"ui/edit_mode", function(m) EditMode = m end},
+        }
+
+        for _, mod in ipairs(modules) do
+            local name, setter = mod[1], mod[2]
+            package.loaded[name] = nil
+            local success, result = pcall(require, name)
+            if success then
+                setter(result)
+                table.insert(reloaded, name:match("([^/]+)$"))
+            else
+                table.insert(failed, name:match("([^/]+)$") .. ": " .. tostring(result):sub(1, 50))
+            end
+        end
+
+        if #failed == 0 then
+            addNotification("Reloaded: " .. table.concat(reloaded, ", "), "success")
+        else
+            addNotification("Reload failed: " .. table.concat(failed, "; "), "error")
+        end
+        print("[Hot Reload] Reloaded:", table.concat(reloaded, ", "))
+        if #failed > 0 then
+            print("[Hot Reload] Failed:", table.concat(failed, "; "))
         end
 
     -- F9: Quick load from slot 1
@@ -598,9 +671,14 @@ function love.keypressed(key)
             if currentState == STATE.TOWN then
                 currentState = STATE.EDIT_MODE
                 EditMode.init(gameData)
+                -- Tell Town to use EditMode's world layout
+                Town.setEditMode(true, EditMode.getWorldLayout())
                 addNotification("Edit Mode active", "info")
             elseif currentState == STATE.EDIT_MODE then
                 currentState = STATE.TOWN
+                -- Exit edit mode and reload from JSON
+                Town.setEditMode(false, nil)
+                Town.loadWorldLayout()
                 addNotification("Edit Mode closed", "info")
             end
         end
@@ -620,6 +698,12 @@ end
 -- Mouse wheel handler for scrolling
 function love.wheelmoved(x, y)
     local mx, my = love.mouse.getPosition()
+
+    -- Handle scroll in Edit Mode
+    if currentState == STATE.EDIT_MODE then
+        EditMode.handleWheelMoved(x, y, mx, my)
+        return
+    end
 
     -- Handle scroll in guild menu
     if currentState == STATE.GUILD then

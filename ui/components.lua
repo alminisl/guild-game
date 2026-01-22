@@ -679,4 +679,269 @@ function Components.drawCenteredPanel(menuWidth, menuHeight)
     return menu
 end
 
+-- ============================================
+-- TEXT INPUT COMPONENT
+-- ============================================
+
+-- Active text input state (only one can be active at a time)
+Components.activeTextInput = nil
+
+-- Draw a text input field
+-- Returns the current value
+function Components.drawTextInput(id, value, x, y, w, h, options)
+    options = options or {}
+    local placeholder = options.placeholder or ""
+    local numeric = options.numeric or false
+    local minValue = options.minValue
+    local maxValue = options.maxValue
+    local step = options.step or 1
+
+    local isActive = Components.activeTextInput == id
+    local displayValue = value or ""
+
+    -- Background
+    local bgColor = isActive and {0.25, 0.25, 0.35} or {0.2, 0.2, 0.25}
+    love.graphics.setColor(bgColor)
+    love.graphics.rectangle("fill", x, y, w, h, 3, 3)
+
+    -- Border
+    local borderColor = isActive and {0.5, 0.6, 0.8} or {0.35, 0.35, 0.4}
+    love.graphics.setColor(borderColor)
+    love.graphics.setLineWidth(isActive and 2 or 1)
+    love.graphics.rectangle("line", x, y, w, h, 3, 3)
+    love.graphics.setLineWidth(1)
+
+    -- Text
+    if displayValue == "" and not isActive then
+        love.graphics.setColor(0.5, 0.5, 0.5)
+        love.graphics.print(placeholder, x + 8, y + h/2 - 7)
+    else
+        love.graphics.setColor(Components.colors.text)
+        love.graphics.print(tostring(displayValue), x + 8, y + h/2 - 7)
+    end
+
+    -- Cursor blink
+    if isActive then
+        local cursorVisible = math.floor(love.timer.getTime() * 2) % 2 == 0
+        if cursorVisible then
+            local textW = love.graphics.getFont():getWidth(tostring(displayValue))
+            love.graphics.setColor(Components.colors.text)
+            love.graphics.rectangle("fill", x + 8 + textW + 2, y + 6, 2, h - 12)
+        end
+    end
+
+    -- Draw +/- buttons for numeric inputs
+    if numeric then
+        local btnSize = h - 4
+        local btnX = x + w + 5
+
+        -- Minus button
+        love.graphics.setColor(0.4, 0.3, 0.3)
+        love.graphics.rectangle("fill", btnX, y + 2, btnSize, btnSize, 3, 3)
+        love.graphics.setColor(Components.colors.text)
+        love.graphics.printf("-", btnX, y + btnSize/2 - 5, btnSize, "center")
+
+        -- Plus button
+        btnX = btnX + btnSize + 3
+        love.graphics.setColor(0.3, 0.4, 0.3)
+        love.graphics.rectangle("fill", btnX, y + 2, btnSize, btnSize, 3, 3)
+        love.graphics.setColor(Components.colors.text)
+        love.graphics.printf("+", btnX, y + btnSize/2 - 5, btnSize, "center")
+    end
+
+    return displayValue
+end
+
+-- Handle text input click (call in mousepressed)
+-- Returns: nil if not clicked, "focus" if input focused, "minus"/"plus" for numeric buttons
+function Components.handleTextInputClick(id, x, y, inputX, inputY, inputW, inputH, options)
+    options = options or {}
+    local numeric = options.numeric or false
+
+    -- Check main input area
+    if Components.isPointInRect(x, y, inputX, inputY, inputW, inputH) then
+        Components.activeTextInput = id
+        return "focus"
+    end
+
+    -- Check +/- buttons for numeric
+    if numeric then
+        local btnSize = inputH - 4
+        local btnX = inputX + inputW + 5
+
+        -- Minus button
+        if Components.isPointInRect(x, y, btnX, inputY + 2, btnSize, btnSize) then
+            return "minus"
+        end
+
+        -- Plus button
+        btnX = btnX + btnSize + 3
+        if Components.isPointInRect(x, y, btnX, inputY + 2, btnSize, btnSize) then
+            return "plus"
+        end
+    end
+
+    return nil
+end
+
+-- Handle keyboard input for active text field
+-- Returns: new value, or nil if no change
+function Components.handleTextInputKey(key, currentValue, options)
+    if not Components.activeTextInput then return nil end
+
+    options = options or {}
+    local numeric = options.numeric or false
+    local minValue = options.minValue
+    local maxValue = options.maxValue
+
+    local value = tostring(currentValue or "")
+
+    if key == "backspace" then
+        value = value:sub(1, -2)
+    elseif key == "return" or key == "escape" then
+        Components.activeTextInput = nil
+        return currentValue  -- Return unchanged to signal done editing
+    elseif key == "tab" then
+        Components.activeTextInput = nil
+        return currentValue
+    end
+
+    if numeric then
+        local numVal = tonumber(value) or 0
+        if minValue and numVal < minValue then numVal = minValue end
+        if maxValue and numVal > maxValue then numVal = maxValue end
+        return numVal
+    end
+
+    return value
+end
+
+-- Handle text input for active text field
+function Components.handleTextInput(text, currentValue, options)
+    if not Components.activeTextInput then return nil end
+
+    options = options or {}
+    local numeric = options.numeric or false
+    local minValue = options.minValue
+    local maxValue = options.maxValue
+
+    local value = tostring(currentValue or "")
+
+    if numeric then
+        -- Only allow digits and decimal point
+        if text:match("^[0-9%.%-]$") then
+            value = value .. text
+        end
+        local numVal = tonumber(value)
+        if numVal then
+            if minValue and numVal < minValue then numVal = minValue end
+            if maxValue and numVal > maxValue then numVal = maxValue end
+            return numVal
+        end
+        return tonumber(currentValue) or 0
+    else
+        return value .. text
+    end
+end
+
+-- Clear active text input (call when clicking elsewhere)
+function Components.clearActiveTextInput()
+    Components.activeTextInput = nil
+end
+
+-- ============================================
+-- DROPDOWN COMPONENT
+-- ============================================
+
+-- Active dropdown state
+Components.activeDropdown = nil
+
+-- Draw a dropdown selector
+function Components.drawDropdown(id, selectedValue, options_list, x, y, w, h)
+    local isOpen = Components.activeDropdown == id
+
+    -- Main button
+    local bgColor = isOpen and {0.3, 0.35, 0.45} or {0.25, 0.25, 0.3}
+    love.graphics.setColor(bgColor)
+    love.graphics.rectangle("fill", x, y, w, h, 3, 3)
+
+    -- Border
+    love.graphics.setColor(0.4, 0.4, 0.5)
+    love.graphics.rectangle("line", x, y, w, h, 3, 3)
+
+    -- Selected text
+    love.graphics.setColor(Components.colors.text)
+    love.graphics.print(tostring(selectedValue), x + 8, y + h/2 - 7)
+
+    -- Arrow
+    love.graphics.printf(isOpen and "^" or "v", x + w - 20, y + h/2 - 7, 15, "center")
+
+    -- Dropdown list
+    if isOpen then
+        local listY = y + h + 2
+        local itemH = h
+        local listH = #options_list * itemH
+
+        -- Background
+        love.graphics.setColor(0.2, 0.2, 0.25, 0.98)
+        love.graphics.rectangle("fill", x, listY, w, listH, 3, 3)
+        love.graphics.setColor(0.4, 0.4, 0.5)
+        love.graphics.rectangle("line", x, listY, w, listH, 3, 3)
+
+        -- Items
+        for i, option in ipairs(options_list) do
+            local itemY = listY + (i - 1) * itemH
+            local isSelected = option == selectedValue
+
+            if isSelected then
+                love.graphics.setColor(0.3, 0.4, 0.5)
+                love.graphics.rectangle("fill", x + 2, itemY + 2, w - 4, itemH - 4, 2, 2)
+            end
+
+            love.graphics.setColor(Components.colors.text)
+            love.graphics.print(tostring(option), x + 8, itemY + itemH/2 - 7)
+        end
+    end
+end
+
+-- Handle dropdown click
+-- Returns: selected option or nil
+function Components.handleDropdownClick(id, mouseX, mouseY, options_list, x, y, w, h)
+    local isOpen = Components.activeDropdown == id
+
+    -- Check main button
+    if Components.isPointInRect(mouseX, mouseY, x, y, w, h) then
+        if isOpen then
+            Components.activeDropdown = nil
+        else
+            Components.activeDropdown = id
+        end
+        return nil
+    end
+
+    -- Check dropdown items
+    if isOpen then
+        local listY = y + h + 2
+        local itemH = h
+
+        for i, option in ipairs(options_list) do
+            local itemY = listY + (i - 1) * itemH
+            if Components.isPointInRect(mouseX, mouseY, x, itemY, w, itemH) then
+                Components.activeDropdown = nil
+                return option
+            end
+        end
+
+        -- Clicked outside dropdown - close it
+        Components.activeDropdown = nil
+    end
+
+    return nil
+end
+
+-- Close active dropdown
+function Components.closeDropdown()
+    Components.activeDropdown = nil
+end
+
 return Components

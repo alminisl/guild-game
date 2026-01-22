@@ -179,6 +179,8 @@ end
 
 -- Load and parse a JSON file
 function json.loadFile(filepath)
+    -- Normalize to forward slashes for LÖVE
+    filepath = filepath:gsub("\\", "/")
     local contents, err = love.filesystem.read(filepath)
     if not contents then
         return nil, "Could not read file: " .. (err or filepath)
@@ -282,13 +284,41 @@ function json.encode(value, indent, currentIndent)
 end
 
 -- Save table to JSON file
+-- Uses native Lua io to write to source directory (not LÖVE save directory)
 function json.saveFile(filepath, data, prettyPrint)
     local indent = prettyPrint and 2 or nil
     local jsonStr = json.encode(data, indent)
-    local success, err = love.filesystem.write(filepath, jsonStr)
-    if not success then
-        return false, "Could not write file: " .. (err or filepath)
+
+    -- Normalize filepath
+    filepath = filepath:gsub("\\", "/")
+
+    -- Get the source directory (where the game files are)
+    local sourceDir = love.filesystem.getSource()
+    local fullPath = sourceDir .. "/" .. filepath
+
+    -- Convert forward slashes to backslashes on Windows for io.open
+    if love.system.getOS() == "Windows" then
+        fullPath = fullPath:gsub("/", "\\")
     end
+
+    print("[JSON] Writing to source: " .. fullPath)
+
+    -- Use native Lua io to write to the actual source directory
+    local file, err = io.open(fullPath, "w")
+    if not file then
+        print("[JSON] Failed to open file: " .. (err or "unknown error"))
+        return false, "Could not open file for writing: " .. (err or filepath)
+    end
+
+    local success, writeErr = file:write(jsonStr)
+    file:close()
+
+    if not success then
+        print("[JSON] Failed to write: " .. (writeErr or "unknown error"))
+        return false, "Could not write file: " .. (writeErr or filepath)
+    end
+
+    print("[JSON] Write successful to source directory")
     return true
 end
 

@@ -211,10 +211,6 @@ function TownMap.draw(gameData)
     love.graphics.printf("Day " .. (gameData.day or 1), SCREEN.width - 100, 17, 90, "center")
 
     -- Instructions
-    love.graphics.setColor(0, 0, 0, 0.5)
-    love.graphics.rectangle("fill", SCREEN.width/2 - 150, SCREEN.height - 40, 300, 30, 5, 5)
-    love.graphics.setColor(1, 1, 1)
-    love.graphics.printf("Click a building to enter", 0, SCREEN.height - 33, SCREEN.width, "center")
 end
 
 -- Update hover state
