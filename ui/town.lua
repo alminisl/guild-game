@@ -2,11 +2,33 @@
 -- Renders the town with terrain sprites and clickable buildings
 
 local Components = require("ui.components")
+local json = require("utils.json")
 
 local Town = {}
 
--- Screen size (1920x1080 default)
+-- Design size (1920x1080) - all positions are relative to this
+local DESIGN_W, DESIGN_H = 1920, 1080
+-- Actual screen size (updated at runtime)
 local SCREEN_W, SCREEN_H = 1920, 1080
+-- Current scale factor
+local currentScale = 1
+local offsetX, offsetY = 0, 0
+
+-- Update scale based on current window size
+local function updateScale()
+    SCREEN_W, SCREEN_H = love.graphics.getDimensions()
+    local scaleX = SCREEN_W / DESIGN_W
+    local scaleY = SCREEN_H / DESIGN_H
+    currentScale = math.min(scaleX, scaleY)
+    -- Center the content if aspect ratio differs
+    offsetX = (SCREEN_W - DESIGN_W * currentScale) / 2
+    offsetY = (SCREEN_H - DESIGN_H * currentScale) / 2
+end
+
+-- Transform screen coordinates to design coordinates
+function Town.screenToDesign(x, y)
+    return (x - offsetX) / currentScale, (y - offsetY) / currentScale
+end
 
 -- Loaded sprites
 local sprites = {}
@@ -25,6 +47,13 @@ local clouds = {}
 
 -- Decorations (trees, rocks, bushes, sheep)
 local decorations = {}
+
+-- Hero departure/arrival animations
+local heroAnimations = {}  -- {hero, x, y, targetX, targetY, direction, type ("departing"/"arriving"), progress}
+local SpriteSystem = nil  -- Will be set when needed
+
+-- Forward declaration for hero animation function
+local updateAndDrawHeroAnimations
 
 -- Building definitions with sprite paths
 Town.buildings = {
@@ -127,6 +156,58 @@ Town.buildings = {
     }
 }
 
+-- Load world layout from JSON
+function Town.loadWorldLayout()
+    local worldLayout, err = json.loadFile("data/world_layout.json")
+
+    if not worldLayout then
+        print("Failed to load world layout:", err)
+        print("Starting with empty world")
+        decorations = {}
+        townNPCs = {}
+        movingSheep = {}
+        return
+    end
+
+    -- Load decorations
+    decorations = {}
+    if worldLayout.decorations then
+        for _, dec in ipairs(worldLayout.decorations) do
+            table.insert(decorations, {
+                type = dec.type,
+                x = dec.x,
+                y = dec.y,
+                scale = dec.scale or 1.0,
+                layer = dec.layer or 1,
+                animOffset = dec.animOffset or 0.0
+            })
+        end
+    end
+
+    -- Load NPCs
+    townNPCs = {}
+    if worldLayout.npcs then
+        for _, npc in ipairs(worldLayout.npcs) do
+            table.insert(townNPCs, {
+                x = npc.startX,
+                y = npc.startY,
+                targetX = npc.endX,
+                targetY = npc.endY,
+                speed = npc.speed or 20,
+                type = npc.type,
+                animOffset = math.random() * 2, -- Random animation offset
+                direction = (npc.endX > npc.startX) and 1 or -1,
+                scale = npc.scale or 0.8
+            })
+        end
+    end
+
+    -- Keep movingSheep empty for now (can be added to JSON later if needed)
+    movingSheep = {}
+
+    print("World layout loaded:", #decorations, "decorations,", #townNPCs, "NPCs")
+end
+
 -- Load all sprites
 function Town.loadSprites()
     if spritesLoaded then return end
@@ -210,64 +291,8 @@ function Town.loadSprites()
         {sprite = "cloud3", x = 1800, y = 45, speed = 11, scale = 0.65}
     }
 
-    -- Initialize decorations for larger map
-    decorations = {
-        -- Trees along left edge
-        {type = "tree1", x = 50, y = 400, scale = 0.7, layer = 1, animOffset = 0.0},
-        {type = "tree2", x = 80, y = 600, scale = 0.75, layer = 1, animOffset = 0.5},
-        {type = "tree1", x = 45, y = 800, scale = 0.7, layer = 1, animOffset = 1.0},
-        -- Trees along right edge
-        {type = "tree3", x = 1870, y = 380, scale = 0.7, layer = 1, animOffset = 0.3},
-        {type = "tree4", x = 1850, y = 580, scale = 0.65, layer = 1, animOffset = 0.8},
-        {type = "tree2", x = 1875, y = 780, scale = 0.7, layer = 1, animOffset = 1.2},
-        -- Trees in town (spread out)
-        {type = "tree1", x = 800, y = 900, scale = 0.6, layer = 2, animOffset = 0.2},
-        {type = "tree3", x = 1100, y = 920, scale = 0.55, layer = 2, animOffset = 0.7},
-        {type = "tree4", x = 180, y = 850, scale = 0.55, layer = 2, animOffset = 0.4},
-        {type = "tree2", x = 1700, y = 900, scale = 0.5, layer = 2, animOffset = 0.9},
-        -- Bushes scattered around
-        {type = "bush1", x = 300, y = 700, scale = 1.0, layer = 1, animOffset = 0.1},
-        {type = "bush2", x = 500, y = 850, scale = 0.9, layer = 2, animOffset = 0.6},
-        {type = "bush1", x = 1200, y = 680, scale = 1.0, layer = 1, animOffset = 0.4},
-        {type = "bush2", x = 1500, y = 870, scale = 0.85, layer = 2, animOffset = 0.9},
-        {type = "bush1", x = 750, y = 680, scale = 0.9, layer = 1, animOffset = 0.2},
-        {type = "bush2", x = 1600, y = 650, scale = 0.8, layer = 1, animOffset = 0.5},
-        -- Rocks
-        {type = "rock1", x = 220, y = 450, scale = 1.2, layer = 1},
-        {type = "rock2", x = 1650, y = 420, scale = 1.0, layer = 1},
-        {type = "rock3", x = 850, y = 800, scale = 0.9, layer = 1},
-        {type = "rock1", x = 1350, y = 850, scale = 1.0, layer = 1},
-        {type = "rock2", x = 350, y = 920, scale = 0.85, layer = 2},
-        -- Water rocks
-        {type = "waterRock1", x = 60, y = 1000, scale = 1.0, layer = 0},
-        {type = "waterRock2", x = 1860, y = 980, scale = 0.9, layer = 0},
-        {type = "waterRock1", x = 600, y = 1050, scale = 0.8, layer = 0},
-        {type = "waterRock2", x = 1400, y = 1040, scale = 0.85, layer = 0}
-    }
-
-    -- Initialize moving sheep (in the town center/market area)
-    movingSheep = {
-        {x = 850, y = 650, targetX = 1050, targetY = 650, speed = 20, scale = 1.3, animOffset = 0.0, direction = 1},
-        {x = 1100, y = 700, targetX = 900, targetY = 700, speed = 15, scale = 1.2, animOffset = 0.5, direction = -1},
-        {x = 750, y = 750, targetX = 950, targetY = 750, speed = 18, scale = 1.4, animOffset = 1.0, direction = 1},
-        {x = 1200, y = 800, targetX = 1000, targetY = 800, speed = 16, scale = 1.25, animOffset = 0.3, direction = -1}
-    }
-
-    -- Initialize wandering NPCs (more NPCs for larger town)
-    townNPCs = {
-        {x = 700, y = 600, targetX = 900, targetY = 600, speed = 25, type = "warrior", animOffset = 0.0, direction = 1},
-        {x = 1100, y = 620, targetX = 850, targetY = 620, speed = 22, type = "archer", animOffset = 0.3, direction = -1},
-        {x = 1300, y = 650, targetX = 1500, targetY = 650, speed = 20, type = "warrior", animOffset = 0.6, direction = 1},
-        {x = 500, y = 700, targetX = 700, targetY = 700, speed = 23, type = "archer", animOffset = 0.9, direction = 1},
-        {x = 1400, y = 750, targetX = 1150, targetY = 750, speed = 21, type = "warrior", animOffset = 0.2, direction = -1},
-        -- Pawns (villagers/workers)
-        {x = 450, y = 580, targetX = 650, targetY = 580, speed = 18, type = "pawn", animOffset = 0.1, direction = 1},
-        {x = 1200, y = 590, targetX = 1000, targetY = 590, speed = 16, type = "pawn_wood", animOffset = 0.4, direction = -1},
-        {x = 800, y = 720, targetX = 1000, targetY = 720, speed = 15, type = "pawn_gold", animOffset = 0.7, direction = 1},
-        {x = 1350, y = 680, targetX = 1150, targetY = 680, speed = 17, type = "pawn_meat", animOffset = 0.5, direction = -1},
-        {x = 600, y = 780, targetX = 800, targetY = 780, speed = 14, type = "pawn", animOffset = 0.8, direction = 1},
-        {x = 950, y = 820, targetX = 750, targetY = 820, speed = 16, type = "pawn_wood", animOffset = 0.2, direction = -1}
-    }
+    -- Load world layout from JSON (decorations, NPCs, etc.)
+    Town.loadWorldLayout()
 
     -- Load decorative house sprites
     local houseFiles = {
@@ -707,15 +732,15 @@ end
 -- Draw the town scene
 function Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
     Town.loadSprites()
+    updateScale()
+
+    -- Transform mouse coordinates to design space
+    local designMouseX, designMouseY = Town.screenToDesign(mouseX, mouseY)
 
     -- Update animation time
     animTime = animTime + love.timer.getDelta()
 
-    -- Get time of day for lighting
-    local dayProgress = gameData.dayProgress or 0
-    local isNight = dayProgress > 0.75 or dayProgress < 0.1
-
-    -- Draw water background
+    -- Draw water background (fills entire screen)
     if terrainSprites.water then
         love.graphics.setColor(1, 1, 1)
         for x = 0, SCREEN_W, terrainSprites.water:getWidth() do
@@ -728,6 +753,11 @@ function Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
         love.graphics.setColor(0.35, 0.6, 0.65)
         love.graphics.rectangle("fill", 0, 0, SCREEN_W, SCREEN_H)
     end
+
+    -- Apply scaling transform for all town content
+    love.graphics.push()
+    love.graphics.translate(offsetX, offsetY)
+    love.graphics.scale(currentScale, currentScale)
 
     -- Draw water rocks (layer 0 - in water)
     for _, dec in ipairs(decorations) do
@@ -764,7 +794,7 @@ function Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
                 type = "building",
                 data = building,
                 y = building.y + h,
-                isHovered = Town.getBuildingAt(mouseX, mouseY) == building.id
+                isHovered = Town.getBuildingAt(mouseX, mouseY) == building.id  -- Uses original coords for getBuildingAt
             })
         end
     end
@@ -775,7 +805,7 @@ function Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
     -- Draw sorted items
     for _, item in ipairs(drawables) do
         if item.type == "building" then
-            drawBuilding(item.data, item.isHovered, mouseX, mouseY)
+            drawBuilding(item.data, item.isHovered, designMouseX, designMouseY)
         end
     end
 
@@ -783,6 +813,9 @@ function Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
     local dt = love.timer.getDelta()
     updateAndDrawSheep(dt)
     updateAndDrawNPCs(dt)
+
+    -- Draw hero departure/arrival animations
+    updateAndDrawHeroAnimations(dt)
 
     -- Draw decorations layer 2 (in front)
     for _, dec in ipairs(decorations) do
@@ -798,7 +831,7 @@ function Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
             -- Update cloud position
             cloud.x = cloud.x - cloud.speed * love.timer.getDelta()
             if cloud.x < -200 then
-                cloud.x = SCREEN_W + 100
+                cloud.x = DESIGN_W + 100
             end
 
             love.graphics.setColor(1, 1, 1, 0.9)
@@ -806,19 +839,10 @@ function Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
         end
     end
 
-    -- Night overlay (darker)
-    if isNight then
-        love.graphics.setColor(0.05, 0.05, 0.15, 0.55)
-        love.graphics.rectangle("fill", 0, 0, SCREEN_W, SCREEN_H)
+    -- Restore transform before drawing UI (UI uses screen coordinates)
+    love.graphics.pop()
 
-        -- Draw campfire in market square
-        drawCampfire(960, 640, 4.0)
-
-        -- Draw glowing windows on buildings
-        drawBuildingWindows()
-    end
-
-    -- UI Header (wider for 1920 screen)
+    -- UI Header (screen coordinates, scales to actual screen width)
     love.graphics.setColor(0, 0, 0, 0.7)
     love.graphics.rectangle("fill", 0, 0, SCREEN_W, 50)
 
@@ -879,78 +903,17 @@ function Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
         love.graphics.print("Fallen: " .. #gameData.graveyard, 1280, 16)
     end
 
-    -- Day/Night toggle button (moved right for wider screen)
-    local isNightTime = TimeSystem and TimeSystem.isNight(gameData) or false
-    local progress = gameData.dayProgress or 0
-
-    local canToggle = false
-    local timeRemaining = ""
-    if isNightTime then
-        canToggle = progress >= 0.95
-        local remaining = (1.0 - progress) * TimeSystem.config.dayDuration
-        timeRemaining = TimeSystem.formatDuration(remaining)
-    else
-        canToggle = progress >= 0.70
-        local remaining = (0.75 - progress) * TimeSystem.config.dayDuration
-        timeRemaining = TimeSystem.formatDuration(math.max(0, remaining))
-    end
-
-    local btnText = isNightTime and "Move to Day" or "Move to Night"
-    local btnColor
-    if canToggle then
-        btnColor = isNightTime and {0.7, 0.6, 0.3} or {0.3, 0.3, 0.6}
-    else
-        btnColor = {0.3, 0.3, 0.3}
-    end
-
-    local dayNightBtnX = SCREEN_W - 220
-    love.graphics.setColor(btnColor)
-    love.graphics.rectangle("fill", dayNightBtnX, 8, 170, 34, 5, 5)
-    love.graphics.setColor(canToggle and {0.9, 0.9, 0.9} or {0.5, 0.5, 0.5})
-    love.graphics.rectangle("line", dayNightBtnX, 8, 170, 34, 5, 5)
-
-    if isNightTime then
-        love.graphics.setColor(canToggle and {1, 0.9, 0.5} or {0.6, 0.5, 0.3})
-        love.graphics.circle("fill", dayNightBtnX + 20, 25, 8)
-    else
-        love.graphics.setColor(canToggle and {0.9, 0.9, 1} or {0.5, 0.5, 0.6})
-        love.graphics.circle("fill", dayNightBtnX + 20, 25, 8)
-        love.graphics.setColor(btnColor)
-        love.graphics.circle("fill", dayNightBtnX + 16, 23, 6)
-    end
-
-    if canToggle then
-        love.graphics.setColor(1, 1, 1)
-        love.graphics.print(btnText, dayNightBtnX + 35, 15)
-    else
-        love.graphics.setColor(0.6, 0.6, 0.6)
-        love.graphics.print("Wait " .. timeRemaining, dayNightBtnX + 35, 15)
-    end
-
     -- Instructions (centered for larger screen)
     love.graphics.setColor(1, 1, 1, 0.8)
     love.graphics.printf("Click a building to enter", 0, SCREEN_H - 40, SCREEN_W, "center")
 end
 
--- Check if day/night button was clicked
-function Town.getDayNightButtonAt(x, y, gameData, TimeSystem)
-    local dayNightBtnX = SCREEN_W - 220
-    if not Components.isPointInRect(x, y, dayNightBtnX, 8, 170, 34) then
-        return false
-    end
-
-    local isNight = TimeSystem and TimeSystem.isNight(gameData) or false
-    local progress = gameData.dayProgress or 0
-
-    if isNight then
-        return progress >= 0.95
-    else
-        return progress >= 0.70
-    end
-end
-
--- Get building ID at mouse position
+-- Get building ID at mouse position (screen coordinates)
 function Town.getBuildingAt(x, y)
+    -- Transform screen coordinates to design coordinates
+    updateScale()
+    local designX, designY = Town.screenToDesign(x, y)
+
     for _, building in ipairs(Town.buildings) do
         if building.name then
             local sprite = sprites[building.id]
@@ -961,13 +924,127 @@ function Town.getBuildingAt(x, y)
                 local bx = building.x - w / 2
                 local by = building.y
 
-                if Components.isPointInRect(x, y, bx, by, w, h) then
+                if Components.isPointInRect(designX, designY, bx, by, w, h) then
                     return building.id
                 end
             end
         end
     end
     return nil
+end
+
+-- Hero departure/arrival animation system
+-- Guild position (scaled for 1280x720 from 1920x1080)
+local GUILD_X = 640  -- Center of screen (960 * 1280/1920)
+local GUILD_Y = 280  -- Below guild building
+local EXIT_Y = 750   -- Off screen at bottom
+
+-- Add heroes departing the guild (walking out)
+function Town.addDepartingHeroes(heroes)
+    if not SpriteSystem then
+        SpriteSystem = require("systems.sprite_system")
+    end
+
+    local spacing = 50
+    local startX = GUILD_X - (#heroes - 1) * spacing / 2
+
+    for i, hero in ipairs(heroes) do
+        local anim = {
+            hero = hero,
+            x = startX + (i - 1) * spacing,
+            y = GUILD_Y,
+            targetY = EXIT_Y,
+            speed = 120,  -- pixels per second
+            type = "departing",
+            animOffset = i * 0.2,
+            direction = 1  -- facing right/down
+        }
+        table.insert(heroAnimations, anim)
+    end
+end
+
+-- Add heroes arriving at the guild (walking in)
+function Town.addArrivingHeroes(heroes)
+    if not SpriteSystem then
+        SpriteSystem = require("systems.sprite_system")
+    end
+
+    local spacing = 50
+    local startX = GUILD_X - (#heroes - 1) * spacing / 2
+
+    for i, hero in ipairs(heroes) do
+        local anim = {
+            hero = hero,
+            x = startX + (i - 1) * spacing,
+            y = EXIT_Y,
+            targetY = GUILD_Y,
+            speed = 120,
+            type = "arriving",
+            animOffset = i * 0.2,
+            direction = -1  -- facing left/up
+        }
+        table.insert(heroAnimations, anim)
+    end
+end
+
+-- Update and draw hero animations (call from Town.draw)
+updateAndDrawHeroAnimations = function(dt)
+    if not SpriteSystem then
+        SpriteSystem = require("systems.sprite_system")
+    end
+
+    local toRemove = {}
+
+    for i, anim in ipairs(heroAnimations) do
+        -- Update position
+        if anim.type == "departing" then
+            anim.y = anim.y + anim.speed * dt
+            if anim.y >= anim.targetY then
+                table.insert(toRemove, i)
+            end
+        else  -- arriving
+            anim.y = anim.y - anim.speed * dt
+            if anim.y <= anim.targetY then
+                table.insert(toRemove, i)
+            end
+        end
+
+        -- Draw hero sprite (using Run animation)
+        if anim.hero then
+            local animation = "Run"
+            local scale = 1.5
+
+            -- Get the sprite
+            local sprite = SpriteSystem.loadSprite(anim.hero.class, animation)
+            if sprite then
+                local spriteH = sprite:getHeight()
+                local frameWidth = spriteH  -- Assuming square frames
+                local totalFrames = math.floor(sprite:getWidth() / frameWidth)
+                if totalFrames < 1 then totalFrames = 1 end
+
+                local frame = math.floor((animTime + anim.animOffset) * 8) % totalFrames
+                local quad = love.graphics.newQuad(frame * frameWidth, 0, frameWidth, spriteH, sprite:getDimensions())
+
+                love.graphics.setColor(1, 1, 1)
+                love.graphics.draw(sprite, quad, anim.x, anim.y, 0, scale, scale, frameWidth/2, spriteH/2)
+            end
+        end
+    end
+
+    -- Remove completed animations (in reverse order)
+    for i = #toRemove, 1, -1 do
+        table.remove(heroAnimations, toRemove[i])
+    end
+end
+
+-- Check if there are active hero animations
+function Town.hasActiveAnimations()
+    return #heroAnimations > 0
+end
+
+-- Clear all animations
+function Town.clearAnimations()
+    heroAnimations = {}
 end
 
 return Town

@@ -25,6 +25,7 @@ local QuestResultModal = require("ui.quest_result_modal")
 local SaveMenu = require("ui.save_menu")
 local SaveSystem = require("systems.save_system")
 local SettingsMenu = require("ui.settings_menu")
+local EditMode = require("ui.edit_mode")
 
 -- Game States
 local STATE = {
@@ -34,7 +35,8 @@ local STATE = {
     ARMORY = "armory",
     POTION = "potion",
     SAVE_MENU = "save_menu",
-    SETTINGS = "settings"
+    SETTINGS = "settings",
+    EDIT_MODE = "edit_mode"
 }
 
 -- Game data (central state)
@@ -56,9 +58,6 @@ local gameData = {
     parties = {},          -- Formed parties (4 heroes with different classes, 3+ quests together)
     protoParties = {}      -- Proto-parties (forming, not yet official)
 }
-
--- Track night state for transitions
-local wasNight = false
 
 -- Current game state
 local currentState = STATE.TOWN
@@ -91,9 +90,8 @@ function love.load()
     local guildLevel = gameData.guild.level or 1
     gameData.tavernPool = Heroes.generateTavernPool(4, maxRank, guildLevel)
 
-    -- Initialize available quests (check if night for night-only quests)
-    local isNight = TimeSystem.isNight(gameData)
-    gameData.availableQuests = Quests.generatePool(5, maxRank, isNight)
+    -- Initialize available quests
+    gameData.availableQuests = Quests.generatePool(5, maxRank)
 
     -- Give player one starter hero (Human Knight)
     local starterHero = Heroes.generate({rank = "D", name = "Recruit Marcus", race = "Human", class = "Knight"})
@@ -134,6 +132,12 @@ function love.update(dt)
         SpriteSystem.updateAll(gameData.tavernPool, dt)
     end
 
+    -- Skip game updates when in Edit Mode
+    if currentState == STATE.EDIT_MODE then
+        EditMode.update(dt, mouseX, mouseY)
+        return
+    end
+
     -- Update time system
     local newDay = TimeSystem.update(gameData, dt)
     if newDay then
@@ -145,10 +149,6 @@ function love.update(dt)
         local guildLevel = gameData.guild.level or 1
         gameData.tavernPool = Heroes.generateTavernPool(4, maxRank, guildLevel)
     end
-
-    -- Track night state for visual sync (but don't auto-refresh quests)
-    -- Quest refresh is now manual via the day/night toggle button
-    wasNight = TimeSystem.isNight(gameData)
 
     -- Update quest system (real-time quest progress)
     local questResults = QuestSystem.update(gameData, dt, Heroes, Quests, Economy, GuildSystem, Materials, EquipmentSystem)
@@ -208,8 +208,7 @@ function love.update(dt)
         questRefreshTimer = 0
         if #gameData.availableQuests < 5 then
             local maxRank = GuildSystem.getMaxTavernRank(gameData)
-            local isNight = TimeSystem.isNight(gameData)
-            local newQuests = Quests.generatePool(1, maxRank, isNight)
+            local newQuests = Quests.generatePool(1, maxRank)
             for _, q in ipairs(newQuests) do
                 table.insert(gameData.availableQuests, q)
             end
@@ -259,10 +258,13 @@ function love.draw()
     elseif currentState == STATE.SETTINGS then
         Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
         SettingsMenu.draw(gameData)
+    elseif currentState == STATE.EDIT_MODE then
+        Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
+        EditMode.draw(gameData, mouseX, mouseY)
     end
 
-    -- Draw settings button on all town-based screens (except when settings is open)
-    if currentState ~= STATE.SETTINGS then
+    -- Draw settings button on all town-based screens (except when settings is open or edit mode)
+    if currentState ~= STATE.SETTINGS and currentState ~= STATE.EDIT_MODE then
         SettingsMenu.drawSettingsButton()
     end
 
@@ -271,25 +273,120 @@ function love.draw()
         QuestResultModal.draw(Heroes)
     end
 
+    -- Draw hero departure/arrival animations (on top of menus)
+    drawHeroAnimations()
+
     -- Draw notifications
     drawNotifications()
 end
 
--- Draw notification messages
+-- Hero animation state
+local heroAnims = {}
+local heroAnimTime = 0
+
+-- Draw heroes leaving/arriving
+function drawHeroAnimations()
+    local dt = love.timer.getDelta()
+    heroAnimTime = heroAnimTime + dt
+    local toRemove = {}
+
+    for i, anim in ipairs(heroAnims) do
+        -- Update position
+        anim.y = anim.y + anim.speedY * dt
+
+        -- Check if done
+        if anim.type == "departing" and anim.y > 800 then
+            table.insert(toRemove, i)
+        elseif anim.type == "arriving" and anim.y < anim.targetY then
+            table.insert(toRemove, i)
+        end
+
+        -- Draw the hero sprite using Walk animation
+        if anim.hero and anim.hero.class then
+            -- Load the walk sprite directly
+            local spriteData = SpriteSystem.loadSprite(anim.hero.class, "Walk")
+            if spriteData and spriteData.image and spriteData.quads then
+                -- Calculate animation frame (8 FPS)
+                local frameIndex = math.floor(heroAnimTime * 8) % spriteData.frameCount + 1
+
+                love.graphics.setColor(1, 1, 1, 1)
+                love.graphics.draw(
+                    spriteData.image,
+                    spriteData.quads[frameIndex],
+                    anim.x, anim.y,
+                    0,  -- rotation
+                    2.25, 2.25,  -- scale (50% larger than before)
+                    spriteData.frameWidth / 2,
+                    spriteData.frameHeight / 2
+                )
+            end
+        end
+    end
+
+    -- Remove finished animations
+    for i = #toRemove, 1, -1 do
+        table.remove(heroAnims, toRemove[i])
+    end
+end
+
+-- Add departing heroes (called from quest system)
+-- Heroes walk in single file line from guild down
+function addDepartingHeroes(heroes)
+    local startX = 640  -- Center of screen (guild position)
+    local verticalSpacing = 60  -- Space between heroes in the line
+
+    for i, hero in ipairs(heroes) do
+        table.insert(heroAnims, {
+            hero = hero,
+            x = startX,
+            y = 150 - (i - 1) * verticalSpacing,  -- Staggered start (leader first)
+            speedY = 180,
+            type = "departing"
+        })
+    end
+end
+
+-- Add arriving heroes (called from quest system)
+-- Heroes walk in single file line back to guild
+function addArrivingHeroes(heroes)
+    local startX = 640  -- Center of screen (guild position)
+    local verticalSpacing = 60  -- Space between heroes in the line
+
+    for i, hero in ipairs(heroes) do
+        table.insert(heroAnims, {
+            hero = hero,
+            x = startX,
+            y = 800 + (i - 1) * verticalSpacing,  -- Staggered start (leader first)
+            targetY = 150,
+            speedY = -180,
+            type = "arriving"
+        })
+    end
+end
+
+-- Draw notification messages (top-right corner)
 function drawNotifications()
-    local y = 640
+    local notifWidth = 350
+    local notifHeight = 32
+    local notifX = 1280 - notifWidth - 10  -- Right side with 10px margin
+    local y = 50  -- Start from top (below header bar)
+
     for i, notif in ipairs(notifications) do
         local alpha = math.min(1, (3 - notificationTimer) * 2)
-        love.graphics.setColor(notif.color[1], notif.color[2], notif.color[3], alpha)
+        love.graphics.setColor(notif.color[1], notif.color[2], notif.color[3], alpha * 0.9)
 
-        -- Background (centered for 1280 width)
-        love.graphics.rectangle("fill", 340, y, 600, 35, 5, 5)
+        -- Background (top-right)
+        love.graphics.rectangle("fill", notifX, y, notifWidth, notifHeight, 5, 5)
+
+        -- Border
+        love.graphics.setColor(1, 1, 1, alpha * 0.3)
+        love.graphics.rectangle("line", notifX, y, notifWidth, notifHeight, 5, 5)
 
         -- Text
         love.graphics.setColor(1, 1, 1, alpha)
-        love.graphics.printf(notif.message, 340, y + 9, 600, "center")
+        love.graphics.printf(notif.message, notifX + 5, y + 8, notifWidth - 10, "center")
 
-        y = y - 40
+        y = y + notifHeight + 5  -- Stack downward
     end
 end
 
@@ -335,27 +432,6 @@ function love.mousepressed(x, y, button)
     end
 
     if currentState == STATE.TOWN then
-        -- Check day/night toggle button first (only works when time period is ending)
-        if Town.getDayNightButtonAt(x, y, gameData, TimeSystem) then
-            local isNight, period = TimeSystem.toggleDayNight(gameData)
-
-            -- Refresh quests based on new time
-            local maxRank = GuildSystem.getMaxTavernRank(gameData)
-            gameData.availableQuests = Quests.generatePool(5, maxRank, isNight)
-
-            if isNight then
-                addNotification("Night falls... dark quests emerge!", "info")
-            else
-                love.window.setTitle("Guild Management - Day " .. gameData.day)
-                addNotification("A new day begins!", "info")
-
-                -- Refresh tavern on new day
-                local guildLevel = gameData.guild.level or 1
-                gameData.tavernPool = Heroes.generateTavernPool(4, maxRank, guildLevel)
-            end
-            return
-        end
-
         -- Check building clicks
         local buildingId = Town.getBuildingAt(x, y)
         if buildingId == "tavern" then
@@ -446,9 +522,36 @@ function love.mousepressed(x, y, button)
             addNotification("Resolution changed to " .. (message or ""), "info")
         elseif result == "fullscreen_toggled" then
             addNotification("Fullscreen toggled", "info")
+        elseif result == "edit_mode_toggled" then
+            local enabled = message
+            if enabled then
+                addNotification("Edit Mode enabled. Press F2 in town to enter.", "info")
+            else
+                addNotification("Edit Mode disabled", "info")
+            end
         elseif result == "error" then
             addNotification(message, "error")
         end
+
+    elseif currentState == STATE.EDIT_MODE then
+        local result, message = EditMode.handleMousePressed(x, y, gameData)
+        if result == "exit" then
+            currentState = STATE.TOWN
+            addNotification("Edit Mode closed", "info")
+        elseif result == "saved" then
+            addNotification(message or "World layout saved!", "success")
+        elseif result == "error" then
+            addNotification(message, "error")
+        end
+    end
+end
+
+-- Handle mouse release (for Edit Mode drag-and-drop)
+function love.mousereleased(x, y, button)
+    if button ~= 1 then return end
+
+    if currentState == STATE.EDIT_MODE then
+        EditMode.handleMouseReleased(x, y, gameData)
     end
 end
 
@@ -487,6 +590,19 @@ function love.keypressed(key)
             addNotification("Game loaded!", "success")
         else
             addNotification("Load failed: " .. msg, "error")
+        end
+
+    -- F2: Toggle Edit Mode (if enabled in settings)
+    elseif key == "f2" then
+        if SettingsMenu.isEditModeEnabled() then
+            if currentState == STATE.TOWN then
+                currentState = STATE.EDIT_MODE
+                EditMode.init(gameData)
+                addNotification("Edit Mode active", "info")
+            elseif currentState == STATE.EDIT_MODE then
+                currentState = STATE.TOWN
+                addNotification("Edit Mode closed", "info")
+            end
         end
 
     -- Debug: Speed up time

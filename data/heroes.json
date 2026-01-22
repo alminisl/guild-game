@@ -58,7 +58,12 @@
             "skills": {
                 "5": { "id": "shield_wall", "name": "Shield Wall", "description": "+10% party survival chance in combat" },
                 "10": { "id": "last_stand", "name": "Last Stand", "description": "Cannot die on first failed combat quest" }
-            }
+            },
+            "passives": [
+                { "id": "iron_wall", "name": "Iron Wall", "category": "DEFENSE", "description": "Reduces party injury severity by 15%", "effect": { "type": "party_injury_reduction", "value": 0.15 } },
+                { "id": "vanguard", "name": "Vanguard", "category": "OFFENSE", "description": "+5% success on STR quests", "effect": { "type": "stat_quest_bonus", "stat": "str", "value": 0.05 } },
+                { "id": "commander", "name": "Commander", "category": "OFFENSE", "description": "+2% success per party member", "effect": { "type": "party_size_bonus", "value": 0.02 } }
+            ]
         },
         "Archer": {
             "statBonus": { "str": 0, "dex": 2, "int": 0, "vit": 0, "luck": 0 },
@@ -68,7 +73,12 @@
             "skills": {
                 "5": { "id": "eagle_eye", "name": "Eagle Eye", "description": "+15% success on DEX-based quests" },
                 "10": { "id": "headshot", "name": "Headshot", "description": "+20% critical success chance" }
-            }
+            },
+            "passives": [
+                { "id": "precision", "name": "Precision", "category": "OFFENSE", "description": "+6% success on DEX quests", "effect": { "type": "stat_quest_bonus", "stat": "dex", "value": 0.06 } },
+                { "id": "swift_shot", "name": "Swift Shot", "category": "SPEED", "description": "Reduces quest execute time by 15%", "effect": { "type": "execute_time_reduction", "value": 0.15 } },
+                { "id": "scavenger", "name": "Scavenger", "category": "WEALTH", "description": "+20% material drop chance", "effect": { "type": "material_bonus", "value": 0.20 } }
+            ]
         },
         "Mage": {
             "statBonus": { "str": 0, "dex": 0, "int": 2, "vit": 0, "luck": 0 },
@@ -78,7 +88,12 @@
             "skills": {
                 "5": { "id": "arcane_insight", "name": "Arcane Insight", "description": "+15% success on INT-based quests" },
                 "10": { "id": "teleport", "name": "Teleport", "description": "Reduces travel time by 50%" }
-            }
+            },
+            "passives": [
+                { "id": "arcane_surge", "name": "Arcane Surge", "category": "OFFENSE", "description": "+8% success on INT quests", "effect": { "type": "stat_quest_bonus", "stat": "int", "value": 0.08 } },
+                { "id": "mana_shield", "name": "Mana Shield", "category": "DEFENSE", "description": "10% chance to negate own injury", "effect": { "type": "self_injury_negate", "value": 0.10 } },
+                { "id": "transmute", "name": "Transmute", "category": "WEALTH", "description": "+25% gold from quests", "effect": { "type": "gold_bonus", "value": 0.25 } }
+            ]
         },
         "Rogue": {
             "statBonus": { "str": 0, "dex": 1, "int": 0, "vit": 0, "luck": 1 },
@@ -88,7 +103,12 @@
             "skills": {
                 "5": { "id": "treasure_hunter", "name": "Treasure Hunter", "description": "+25% gold from quests" },
                 "10": { "id": "escape_artist", "name": "Escape Artist", "description": "Cannot die from quest failures" }
-            }
+            },
+            "passives": [
+                { "id": "lucky_strike", "name": "Lucky Strike", "category": "WEALTH", "description": "+30% gold from quests", "effect": { "type": "gold_bonus", "value": 0.30 } },
+                { "id": "shadow_step", "name": "Shadow Step", "category": "DEFENSE", "description": "50% chance to evade death", "effect": { "type": "death_evade", "value": 0.50 } },
+                { "id": "opportunist", "name": "Opportunist", "category": "OFFENSE", "description": "+3% success per party member", "effect": { "type": "party_size_bonus", "value": 0.03 } }
+            ]
         },
         "Priest": {
             "statBonus": { "str": 0, "dex": 0, "int": 1, "vit": 1, "luck": 0 },
@@ -99,6 +119,11 @@
                 "5": { "id": "blessing", "name": "Blessing", "description": "Reduces party rest time by 25%" },
                 "10": { "id": "resurrect", "name": "Resurrect", "description": "Can resurrect one fallen hero from the graveyard" }
             },
+            "passives": [
+                { "id": "divine_shield", "name": "Divine Shield", "category": "DEFENSE", "description": "Reduces party death chance by 20%", "effect": { "type": "party_death_reduction", "value": 0.20 } },
+                { "id": "holy_blessing", "name": "Holy Blessing", "category": "OFFENSE", "description": "+2% success per party member", "effect": { "type": "party_size_bonus", "value": 0.02 } },
+                { "id": "restoration", "name": "Restoration", "category": "SPEED", "description": "Party rests 30% faster", "effect": { "type": "party_rest_reduction", "value": 0.30 } }
+            ],
             "special": {
                 "preventsPartyDeath": true,
                 "deathProtectionMessage": "Priest's divine protection saved the party!"
@@ -112,7 +137,12 @@
             "skills": {
                 "5": { "id": "forager", "name": "Forager", "description": "+25% material drops" },
                 "10": { "id": "beast_master", "name": "Beast Master", "description": "+1 party power when in party" }
-            }
+            },
+            "passives": [
+                { "id": "pathfinder", "name": "Pathfinder", "category": "SPEED", "description": "Reduces travel time by 25%", "effect": { "type": "travel_time_reduction", "value": 0.25 } },
+                { "id": "survivalist", "name": "Survivalist", "category": "SPEED", "description": "Own rest time reduced by 35%", "effect": { "type": "self_rest_reduction", "value": 0.35 } },
+                { "id": "tracker", "name": "Tracker", "category": "OFFENSE", "description": "+5% success on exploration quests", "effect": { "type": "quest_type_bonus", "questType": "exploration", "value": 0.05 } }
+            ]
         },
         "Paladin": {
             "statBonus": { "str": 5, "dex": 1, "int": 2, "vit": 4, "luck": 2 },

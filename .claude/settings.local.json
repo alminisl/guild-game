@@ -9,7 +9,10 @@
       "Bash(start \"\" \"C:\\\\Program Files\\\\LOVE\\\\love.exe\" \"F:\\\\MyGames\\\\LovePrototype\")",
       "Bash(dir \"C:\\\\Program Files\\\\LOVE\")",
       "Bash(dir /s /b \"F:\\\\MyGames\\\\LovePrototype\\\\assets\\\\Buildings\")",
-      "Bash(dir /s /b \"F:\\\\MyGames\\\\LovePrototype\\\\assets\\\\Terrain\\\\Resources\\\\Wood\\\\Trees\")"
+      "Bash(dir /s /b \"F:\\\\MyGames\\\\LovePrototype\\\\assets\\\\Terrain\\\\Resources\\\\Wood\\\\Trees\")",
+      "Bash(dir /s /b \"F:\\\\MyGames\\\\LovePrototype\\\\assets\\\\Characters*\")",
+      "Bash(timeout /t 2 /nobreak)",
+      "Bash(ls:*)"
     ]
   }
 }

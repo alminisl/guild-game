@@ -607,4 +607,76 @@ function Components.drawHelpIcon(x, y, size)
     love.graphics.printf("?", x, y + size/2 - 7, size, "center")
 end
 
+-- ============================================
+-- MENU CENTERING & SCALING UTILITIES
+-- ============================================
+
+-- Base design resolution (menus designed for this size)
+Components.designWidth = 1280
+Components.designHeight = 720
+
+-- Get current window dimensions
+function Components.getWindowSize()
+    return love.graphics.getDimensions()
+end
+
+-- Calculate centered menu position and scale
+-- menuWidth/menuHeight: the menu's design dimensions
+-- Returns: {x, y, width, height, scale}
+function Components.getCenteredMenu(menuWidth, menuHeight)
+    local windowW, windowH = Components.getWindowSize()
+
+    -- Calculate scale to fit menu in window with padding
+    local padding = 40
+    local availableW = windowW - padding * 2
+    local availableH = windowH - padding * 2
+
+    local scaleX = availableW / menuWidth
+    local scaleY = availableH / menuHeight
+    local scale = math.min(scaleX, scaleY, 1.5)  -- Cap at 1.5x to avoid too large
+
+    -- Calculate scaled dimensions
+    local scaledW = menuWidth * scale
+    local scaledH = menuHeight * scale
+
+    -- Center in window
+    local x = (windowW - scaledW) / 2
+    local y = (windowH - scaledH) / 2
+
+    return {
+        x = x,
+        y = y,
+        width = scaledW,
+        height = scaledH,
+        scale = scale,
+        -- Original design dimensions for reference
+        designWidth = menuWidth,
+        designHeight = menuHeight
+    }
+end
+
+-- Get a menu rect that updates dynamically with window size
+-- Call this in draw() to get current centered position
+function Components.getMenuRect(designWidth, designHeight)
+    return Components.getCenteredMenu(designWidth, designHeight)
+end
+
+-- Draw a centered panel background
+function Components.drawCenteredPanel(menuWidth, menuHeight)
+    local menu = Components.getCenteredMenu(menuWidth, menuHeight)
+
+    -- Background overlay
+    local windowW, windowH = Components.getWindowSize()
+    love.graphics.setColor(0, 0, 0, 0.7)
+    love.graphics.rectangle("fill", 0, 0, windowW, windowH)
+
+    -- Panel
+    love.graphics.setColor(Components.colors.panel)
+    love.graphics.rectangle("fill", menu.x, menu.y, menu.width, menu.height, 10, 10)
+    love.graphics.setColor(0.4, 0.4, 0.5)
+    love.graphics.rectangle("line", menu.x, menu.y, menu.width, menu.height, 10, 10)
+
+    return menu
+end
+
 return Components

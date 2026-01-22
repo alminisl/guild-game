@@ -5,13 +5,28 @@ local Components = require("ui.components")
 
 local ArmoryMenu = {}
 
--- Menu dimensions (scaled for 1280x720)
+-- Menu design dimensions (base size before scaling)
+local MENU_DESIGN_WIDTH = 1100
+local MENU_DESIGN_HEIGHT = 600
+
+-- Legacy MENU table for backward compatibility (updated dynamically)
 local MENU = {
     x = 90,
     y = 60,
     width = 1100,
     height = 600
 }
+
+-- Update MENU table with current centered values
+local function updateMenuRect()
+    local rect = Components.getCenteredMenu(MENU_DESIGN_WIDTH, MENU_DESIGN_HEIGHT)
+    MENU.x = rect.x
+    MENU.y = rect.y
+    MENU.width = rect.width
+    MENU.height = rect.height
+    MENU.scale = rect.scale
+    return MENU
+end
 
 -- Tab definitions
 local TABS = {
@@ -465,23 +480,37 @@ end
 
 -- Main draw function
 function ArmoryMenu.draw(gameData, Equipment, Materials, Recipes, EquipmentSystem, CraftingSystem, Economy, Heroes)
-    -- Background panel
-    Components.drawPanel(MENU.x, MENU.y, MENU.width, MENU.height)
+    -- Update menu position for current window size
+    updateMenuRect()
+    local scale = MENU.scale or 1
+
+    -- Dark background overlay (screen coordinates)
+    local windowW, windowH = love.graphics.getDimensions()
+    love.graphics.setColor(0, 0, 0, 0.7)
+    love.graphics.rectangle("fill", 0, 0, windowW, windowH)
+
+    -- Apply transform for scaled menu content
+    love.graphics.push()
+    love.graphics.translate(MENU.x, MENU.y)
+    love.graphics.scale(scale, scale)
+
+    -- Background panel (design coordinates)
+    Components.drawPanel(0, 0, MENU_DESIGN_WIDTH, MENU_DESIGN_HEIGHT)
 
     -- Title
     love.graphics.setColor(Components.colors.text)
-    love.graphics.printf("IRONFORGE ARMORY", MENU.x, MENU.y + 15, MENU.width, "center")
+    love.graphics.printf("IRONFORGE ARMORY", 0, 15, MENU_DESIGN_WIDTH, "center")
 
     -- Close button
-    Components.drawCloseButton(MENU.x + MENU.width - 40, MENU.y + 10)
+    Components.drawCloseButton(MENU_DESIGN_WIDTH - 40, 10)
 
     -- Gold display
-    Components.drawGold(gameData.gold, MENU.x + 20, MENU.y + 15)
+    Components.drawGold(gameData.gold, 20, 15)
 
     -- Tabs
-    local tabY = MENU.y + 50
+    local tabY = 50
     local tabWidth = 100
-    local tabX = MENU.x + 20
+    local tabX = 20
 
     for _, tab in ipairs(TABS) do
         local isActive = currentTab == tab.id
@@ -495,11 +524,11 @@ function ArmoryMenu.draw(gameData, Equipment, Materials, Recipes, EquipmentSyste
         tabX = tabX + tabWidth + 10
     end
 
-    -- Content area
-    local contentX = MENU.x + 20
-    local contentY = MENU.y + 95
-    local contentWidth = MENU.width - 40
-    local contentHeight = MENU.height - 110
+    -- Content area (design coordinates)
+    local contentX = 20
+    local contentY = 95
+    local contentWidth = MENU_DESIGN_WIDTH - 40
+    local contentHeight = MENU_DESIGN_HEIGHT - 110
 
     if currentTab == "shop" then
         drawShopTab(gameData, Equipment, Economy, contentX, contentY, contentWidth, contentHeight)
@@ -514,23 +543,34 @@ function ArmoryMenu.draw(gameData, Equipment, Materials, Recipes, EquipmentSyste
     -- Hint text
     love.graphics.setColor(Components.colors.textDim)
     love.graphics.printf("Tip: Complete cave/mine quests for bonus materials! Higher luck = more drops.",
-        MENU.x, MENU.y + MENU.height - 25, MENU.width, "center")
+        0, MENU_DESIGN_HEIGHT - 25, MENU_DESIGN_WIDTH, "center")
+
+    -- Restore transform
+    love.graphics.pop()
 end
 
 -- Handle click
 function ArmoryMenu.handleClick(x, y, gameData, Equipment, Materials, Recipes, EquipmentSystem, CraftingSystem, Economy, Heroes)
-    -- Close button
-    if Components.isPointInRect(x, y, MENU.x + MENU.width - 40, MENU.y + 10, 30, 30) then
+    -- Update menu position for current window size
+    updateMenuRect()
+    local scale = MENU.scale or 1
+
+    -- Transform screen coordinates to design coordinates
+    local designX = (x - MENU.x) / scale
+    local designY = (y - MENU.y) / scale
+
+    -- Close button (design coordinates)
+    if Components.isPointInRect(designX, designY, MENU_DESIGN_WIDTH - 40, 10, 30, 30) then
         return "close"
     end
 
-    -- Tab clicks
-    local tabY = MENU.y + 50
+    -- Tab clicks (design coordinates)
+    local tabY = 50
     local tabWidth = 100
-    local tabX = MENU.x + 20
+    local tabX = 20
 
     for _, tab in ipairs(TABS) do
-        if Components.isPointInRect(x, y, tabX, tabY, tabWidth, 30) then
+        if Components.isPointInRect(designX, designY, tabX, tabY, tabWidth, 30) then
             currentTab = tab.id
             scrollOffset = 0
             return nil
@@ -538,9 +578,9 @@ function ArmoryMenu.handleClick(x, y, gameData, Equipment, Materials, Recipes, E
         tabX = tabX + tabWidth + 10
     end
 
-    local contentX = MENU.x + 20
-    local contentY = MENU.y + 95
-    local contentWidth = MENU.width - 40
+    local contentX = 20
+    local contentY = 95
+    local contentWidth = MENU_DESIGN_WIDTH - 40
 
     -- Stables tab clicks
     if currentTab == "stables" then
@@ -563,7 +603,7 @@ function ArmoryMenu.handleClick(x, y, gameData, Equipment, Materials, Recipes, E
                 local item = mountItems[idx]
 
                 -- Buy button click
-                if Components.isPointInRect(x, y, contentX + contentWidth - 80, itemY + 20, 60, 28) then
+                if Components.isPointInRect(designX, designY, contentX + contentWidth - 80, itemY + 20, 60, 28) then
                     if Economy.canAfford(gameData, item.cost) then
                         local success, msg = Economy.spend(gameData, item.cost, "buying " .. item.name)
                         if success then
@@ -588,7 +628,7 @@ function ArmoryMenu.handleClick(x, y, gameData, Equipment, Materials, Recipes, E
         local filters = {"all", "weapon", "armor", "accessory"}
         local filterX = contentX + 10
         for _, filter in ipairs(filters) do
-            if Components.isPointInRect(x, y, filterX, contentY, 80, 25) then
+            if Components.isPointInRect(designX, designY, filterX, contentY, 80, 25) then
                 shopFilter = filter
                 scrollOffset = 0
                 return nil
@@ -615,7 +655,7 @@ function ArmoryMenu.handleClick(x, y, gameData, Equipment, Materials, Recipes, E
                 local item = filteredItems[idx]
 
                 -- Buy button click
-                if Components.isPointInRect(x, y, contentX + contentWidth - 80, itemY + 15, 60, 28) then
+                if Components.isPointInRect(designX, designY, contentX + contentWidth - 80, itemY + 15, 60, 28) then
                     if Economy.canAfford(gameData, item.cost) then
                         local success, msg = Economy.spend(gameData, item.cost, "buying " .. item.name)
                         if success then
@@ -648,7 +688,7 @@ function ArmoryMenu.handleClick(x, y, gameData, Equipment, Materials, Recipes, E
                 local recipe = recipes[idx]
 
                 -- Craft button click
-                if Components.isPointInRect(x, y, contentX + contentWidth - 80, recipeY + 22, 60, 28) then
+                if Components.isPointInRect(designX, designY, contentX + contentWidth - 80, recipeY + 22, 60, 28) then
                     if CraftingSystem.canCraft(recipe, gameData) then
                         local success, msg = CraftingSystem.craft(recipe, gameData)
                         if success then

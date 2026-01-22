@@ -2,6 +2,7 @@
 -- Quest templates loaded from JSON for easy customization
 
 local json = require("utils.json")
+local Heroes = require("data.heroes")
 
 local Quests = {}
 
@@ -41,9 +42,9 @@ local function loadQuestData()
                 deathRisk = {
                     D = {canKill = false, injuryOnly = true, deathChance = 0},
                     C = {canKill = false, injuryOnly = true, deathChance = 0},
-                    B = {canKill = false, injuryOnly = true, deathChance = 0},
-                    A = {canKill = true, injuryOnly = false, deathChance = 0.3, clericProtection = true},
-                    S = {canKill = true, injuryOnly = false, deathChance = 0.5, clericProtection = true}
+                    B = {canKill = true, injuryOnly = false, deathChance = 0.10, clericProtection = true},
+                    A = {canKill = true, injuryOnly = false, deathChance = 0.25, clericProtection = true},
+                    S = {canKill = true, injuryOnly = false, deathChance = 0.45, clericProtection = true}
                 }
             },
             templates = {D = {}, C = {}, B = {}, A = {}, S = {}}
@@ -266,11 +267,9 @@ function Quests.getPhasePercent(quest)
 end
 
 -- Generate a pool of available quests
--- timeOfDay: "day", "night", or nil for current time check
-function Quests.generatePool(count, maxRank, isNight)
+function Quests.generatePool(count, maxRank)
     count = count or 5
     maxRank = maxRank or "B"
-    isNight = isNight or false
 
     local rankOrder = {"D", "C", "B", "A", "S"}
     local maxRankIndex = 1
@@ -294,24 +293,12 @@ function Quests.generatePool(count, maxRank, isNight)
         rankIndex = math.min(rankIndex, maxRankIndex)
         local rank = rankOrder[rankIndex]
 
-        -- Filter templates based on time of day
+        -- Get all templates for this rank
         local rankTemplates = templates[rank] or {}
-        local filteredTemplates = {}
-        for _, t in ipairs(rankTemplates) do
-            local timeOfDay = t.timeOfDay or "any"
-            -- Include if: any time, OR matches current time (day/night)
-            if timeOfDay == "any" then
-                table.insert(filteredTemplates, t)
-            elseif timeOfDay == "night" and isNight then
-                table.insert(filteredTemplates, t)
-            elseif timeOfDay == "day" and not isNight then
-                table.insert(filteredTemplates, t)
-            end
-        end
 
         -- Pick unused template if possible
         local template = nil
-        for _, t in ipairs(filteredTemplates) do
+        for _, t in ipairs(rankTemplates) do
             if not usedTemplates[t.name] then
                 template = t
                 usedTemplates[t.name] = true
@@ -440,7 +427,7 @@ function Quests.calculateSuccessChance(quest, heroes, EquipmentSystem)
     local expectedStats = config.expectedStats or {D = 5, C = 7, B = 10, A = 13, S = 16}
     local expected = expectedStats[quest.rank] or 8
     local avgPrimaryStat = totalPrimaryStat / #heroes
-    local primaryStatBonus = (avgPrimaryStat - expected) * 0.02
+    local primaryStatBonus = (avgPrimaryStat - expected) * 0.03
 
     -- Secondary stat bonuses (weighted by their importance)
     local secondaryStatBonus = 0
@@ -456,7 +443,7 @@ function Quests.calculateSuccessChance(quest, heroes, EquipmentSystem)
     local avgLuck = totalLuck / #heroes
     local luckBonus = (avgLuck - 5) * 0.01
 
-    -- Synergy bonuses
+    -- Synergy bonuses (from party system)
     local synergyBonuses = Quests.getSynergyBonuses(heroes, quest)
     local synergySuccessBonus = synergyBonuses.successBonus or 0
 
@@ -465,7 +452,11 @@ function Quests.calculateSuccessChance(quest, heroes, EquipmentSystem)
         synergySuccessBonus = synergySuccessBonus + synergyBonuses.statBonuses[quest.requiredStat]
     end
 
-    local finalChance = baseChance + rankBonus + primaryStatBonus + secondaryStatBonus + luckBonus + synergySuccessBonus
+    -- Passive ability bonuses (individual + party synergy archetype)
+    local passiveEffects = Heroes.getPartyPassiveEffects(heroes)
+    local passiveSuccessBonus = passiveEffects.successBonus or 0
+
+    local finalChance = baseChance + rankBonus + primaryStatBonus + secondaryStatBonus + luckBonus + synergySuccessBonus + passiveSuccessBonus
     return math.max(0.15, math.min(0.98, finalChance))
 end
 
@@ -645,6 +636,9 @@ function Quests.resolve(quest, heroes, partyLuckBonus)
     local avgLuck = #heroes > 0 and (totalLuck / #heroes) or 5
     local luckMultiplier = 1.0 + (avgLuck - 5) * 0.05
 
+    -- Get passive effects for reward/survival modifiers
+    local passiveEffects = Heroes.getPartyPassiveEffects(heroes)
+
     local result = {
         success = roll <= successChance,
         goldReward = 0,
@@ -652,7 +646,8 @@ function Quests.resolve(quest, heroes, partyLuckBonus)
         message = "",
         bonusRewards = {},
         heroDeaths = {},
-        heroInjuries = {}
+        heroInjuries = {},
+        passiveSynergy = Heroes.getSynergyInfo(heroes)  -- Store synergy info for display
     }
 
     if result.success then
@@ -660,8 +655,9 @@ function Quests.resolve(quest, heroes, partyLuckBonus)
         result.xpReward = quest.xpReward
         result.message = "Quest completed successfully!"
 
-        -- Roll for bonus rewards
-        result.bonusRewards = Quests.rollRewards(quest, luckMultiplier)
+        -- Roll for bonus rewards (with material bonus from passives)
+        local materialLuckMultiplier = luckMultiplier * (1 + (passiveEffects.materialBonus or 0))
+        result.bonusRewards = Quests.rollRewards(quest, materialLuckMultiplier)
 
         -- Add bonus gold from rewards
         for _, reward in ipairs(result.bonusRewards) do
@@ -669,6 +665,14 @@ function Quests.resolve(quest, heroes, partyLuckBonus)
                 result.goldReward = result.goldReward + reward.amount
             end
         end
+
+        -- Apply gold bonus from passives
+        local goldMultiplier = 1 + (passiveEffects.goldBonus or 0)
+        result.goldReward = math.floor(result.goldReward * goldMultiplier)
+
+        -- Apply XP bonus from passives
+        local xpMultiplier = 1 + (passiveEffects.xpBonus or 0)
+        result.xpReward = math.floor(result.xpReward * xpMultiplier)
     else
         -- Partial rewards on failure
         result.goldReward = math.floor(quest.reward * 0.2)
@@ -679,16 +683,25 @@ function Quests.resolve(quest, heroes, partyLuckBonus)
         if quest.combat and quest.canKill then
             local hasCleric = Quests.partyHasCleric(heroes)
 
+            -- Calculate reduced death chance from passives
+            local deathReduction = passiveEffects.deathReduction or 0
+            local adjustedDeathChance = quest.deathChance * (1 - deathReduction)
+
             for _, hero in ipairs(heroes) do
                 -- Skip if cleric protection applies
                 if hasCleric and quest.clericProtection then
                     table.insert(result.heroInjuries, hero)
                 else
-                    -- Roll for death
-                    if math.random() <= quest.deathChance then
+                    -- Roll for death (with passive reduction)
+                    if math.random() <= adjustedDeathChance then
                         -- Check for escape artist skill (Rogue level 10)
                         local hasEscapeArtist = hero.class == "Rogue" and hero.level >= 10
-                        if not hasEscapeArtist then
+
+                        -- Check for Shadow Step passive (50% death evade)
+                        local hasShadowStep = hero.passive and hero.passive.id == "shadow_step"
+                        local evadedDeath = hasShadowStep and math.random() <= 0.5
+
+                        if not hasEscapeArtist and not evadedDeath then
                             table.insert(result.heroDeaths, hero)
                         else
                             table.insert(result.heroInjuries, hero)

@@ -33,6 +33,7 @@ local masterVolume = 1.0
 local musicVolume = 0.7
 local sfxVolume = 1.0
 local fullscreen = false
+local editModeEnabled = false
 
 -- Save/Load state
 local saveInfoCache = nil
@@ -170,6 +171,17 @@ function drawVideoSettings(y, height)
     local fsText = fullscreen and "ON" or "OFF"
     local fsColor = fullscreen and {0.3, 0.6, 0.4} or {0.5, 0.3, 0.3}
     Components.drawButton(fsText, MENU.x + 200, resY, 100, 35, {color = fsColor})
+
+    -- Edit Mode toggle
+    resY = resY + 50
+    love.graphics.setColor(Components.colors.text)
+    love.graphics.print("Edit Mode:", MENU.x + 80, resY + 8)
+    love.graphics.setColor(Components.colors.textDim)
+    love.graphics.printf("(Press F2 in town)", MENU.x + 80, resY + 25, MENU.width - 160, "left")
+
+    local emText = editModeEnabled and "ON" or "OFF"
+    local emColor = editModeEnabled and {0.3, 0.6, 0.4} or {0.5, 0.3, 0.3}
+    Components.drawButton(emText, MENU.x + 200, resY, 100, 35, {color = emColor})
 end
 
 -- Draw AUDIO settings
@@ -372,6 +384,13 @@ function handleVideoClick(x, y, contentY)
         return "fullscreen_toggled"
     end
 
+    -- Edit Mode toggle
+    resY = resY + 50
+    if Components.isPointInRect(x, y, MENU.x + 200, resY, 100, 35) then
+        editModeEnabled = not editModeEnabled
+        return "edit_mode_toggled", editModeEnabled
+    end
+
     return nil
 end
 
@@ -513,6 +532,11 @@ function SettingsMenu.drawSettingsButton()
     -- Inner hole
     love.graphics.setColor(0.25, 0.25, 0.3)
     love.graphics.circle("fill", cx, cy, innerR)
+end
+
+-- Get Edit Mode enabled state
+function SettingsMenu.isEditModeEnabled()
+    return editModeEnabled
 end
 
 return SettingsMenu

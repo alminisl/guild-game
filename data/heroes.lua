@@ -461,8 +461,15 @@ function Heroes.generate(options)
             armor = nil,
             accessory = nil,
             mount = nil
-        }
+        },
+        passive = nil  -- Will be assigned below
     }
+
+    -- Assign random passive from class passives
+    if classData and classData.passives and #classData.passives > 0 then
+        local randomIndex = math.random(#classData.passives)
+        hero.passive = classData.passives[randomIndex]
+    end
 
     nextHeroId = nextHeroId + 1
     return hero
@@ -581,6 +588,12 @@ end
 
 -- Start hero resting after quest
 function Heroes.startResting(hero, questRank, failed)
+    -- TESTING: Hardcoded 2 second rest time
+    hero.restTimeMax = 2
+    hero.restProgress = 0
+    hero.status = "resting"
+
+    --[[ ORIGINAL CODE:
     local data = loadHeroData()
     local baseRest = data.config.baseRestTime[hero.rank] or 15
     local questMultiplier = (data.config.rankPower[questRank] or 1) * 0.5 + 0.5
@@ -593,6 +606,7 @@ function Heroes.startResting(hero, questRank, failed)
     hero.restTimeMax = baseRest * questMultiplier * math.max(0.5, vitBonus) * injuryMultiplier
     hero.restProgress = 0
     hero.status = "resting"
+    --]]
 end
 
 -- Record a quest failure
@@ -780,6 +794,324 @@ function Heroes.reload()
     heroData = nil
     loadHeroData()
     print("Hero data reloaded from JSON")
+end
+
+-- ============================================
+-- PASSIVE SYNERGY SYSTEM
+-- ============================================
+
+-- Synergy archetype definitions
+local synergyArchetypes = {
+    -- PURE COMPOSITIONS (4 of same)
+    pure_offense = {
+        name = "War Council",
+        description = "Four offensive passives unite for maximum impact",
+        pattern = "pure",
+        category = "OFFENSE",
+        bonuses = {
+            successBonus = 0.15,      -- +15% quest success
+            xpBonus = 0.30            -- +30% XP gain
+        }
+    },
+    pure_defense = {
+        name = "Iron Fortress",
+        description = "Impenetrable defense through unity",
+        pattern = "pure",
+        category = "DEFENSE",
+        bonuses = {
+            injuryReduction = 0.60,   -- -60% injury chance
+            recoveryBonus = 1.00      -- +100% recovery speed
+        }
+    },
+    pure_wealth = {
+        name = "Merchant Guild",
+        description = "Fortune favors the greedy",
+        pattern = "pure",
+        category = "WEALTH",
+        bonuses = {
+            goldBonus = 0.80,         -- +80% gold
+            materialBonus = 0.40      -- +40% materials
+        }
+    },
+    pure_speed = {
+        name = "Swift Wind",
+        description = "Speed above all else",
+        pattern = "pure",
+        category = "SPEED",
+        bonuses = {
+            questTimeReduction = 0.30,  -- -30% quest time
+            recoveryReduction = 0.40    -- -40% recovery time
+        }
+    },
+
+    -- FOCUSED COMPOSITIONS (3 + 1)
+    focused = {
+        name = "Focused Party",
+        description = "Specialized with a backup plan",
+        pattern = "focused",
+        -- Bonuses are calculated based on primary/secondary categories
+        baseBonuses = {
+            primaryMultiplier = 0.10,   -- +10% to primary category effect
+            secondaryMultiplier = 0.05  -- +5% to secondary category effect
+        }
+    },
+
+    -- BALANCED COMPOSITIONS (2 + 2)
+    balanced = {
+        name = "Balanced Doctrine",
+        description = "Equal focus brings stability",
+        pattern = "balanced",
+        -- Bonuses are calculated based on the two categories
+        baseBonuses = {
+            dualMultiplier = 0.08       -- +8% to both category effects
+        }
+    },
+
+    -- VERSATILE COMPOSITION (2 + 1 + 1)
+    versatile = {
+        name = "Versatile Expedition",
+        description = "Prepared for anything",
+        pattern = "versatile",
+        bonuses = {
+            successBonus = 0.05,        -- +5% quest success
+            injuryReduction = 0.10      -- -10% injury chance
+        }
+    },
+
+    -- DIVERSE COMPOSITION (1 + 1 + 1 + 1)
+    diverse = {
+        name = "Adventurer's Guild",
+        description = "A little of everything goes a long way",
+        pattern = "diverse",
+        bonuses = {
+            successBonus = 0.03,        -- +3% to all outcomes
+            goldBonus = 0.03,
+            injuryReduction = 0.03,
+            questTimeReduction = 0.03
+        }
+    },
+
+    -- NO SYNERGY (incomplete party)
+    none = {
+        name = "No Synergy",
+        description = "Party lacks cohesion",
+        pattern = "none",
+        bonuses = {}
+    }
+}
+
+-- Category effect mappings for focused/balanced calculations
+local categoryEffects = {
+    OFFENSE = { "successBonus", "xpBonus" },
+    DEFENSE = { "injuryReduction", "deathReduction" },
+    WEALTH = { "goldBonus", "materialBonus" },
+    SPEED = { "questTimeReduction", "recoveryReduction" }
+}
+
+-- Count passive categories from a list of heroes
+function Heroes.countPassiveCategories(heroes)
+    local counts = { OFFENSE = 0, DEFENSE = 0, WEALTH = 0, SPEED = 0 }
+
+    for _, hero in ipairs(heroes) do
+        if hero.passive and hero.passive.category then
+            local cat = hero.passive.category
+            if counts[cat] then
+                counts[cat] = counts[cat] + 1
+            end
+        end
+    end
+
+    return counts
+end
+
+-- Resolve synergy archetype from category counts
+function Heroes.resolveSynergyArchetype(heroes)
+    if #heroes < 4 then
+        return synergyArchetypes.none, nil
+    end
+
+    local counts = Heroes.countPassiveCategories(heroes)
+
+    -- Sort categories by count (descending)
+    local sorted = {}
+    for cat, count in pairs(counts) do
+        table.insert(sorted, { category = cat, count = count })
+    end
+    table.sort(sorted, function(a, b) return a.count > b.count end)
+
+    -- Determine pattern based on distribution
+    local first = sorted[1].count
+    local second = sorted[2].count
+    local third = sorted[3].count
+    local fourth = sorted[4].count
+
+    -- Pure: 4-0-0-0
+    if first == 4 then
+        local cat = sorted[1].category
+        if cat == "OFFENSE" then return synergyArchetypes.pure_offense, counts
+        elseif cat == "DEFENSE" then return synergyArchetypes.pure_defense, counts
+        elseif cat == "WEALTH" then return synergyArchetypes.pure_wealth, counts
+        elseif cat == "SPEED" then return synergyArchetypes.pure_speed, counts
+        end
+    end
+
+    -- Focused: 3-1-0-0
+    if first == 3 and second == 1 then
+        local archetype = {
+            name = synergyArchetypes.focused.name,
+            description = synergyArchetypes.focused.description,
+            pattern = "focused",
+            primaryCategory = sorted[1].category,
+            secondaryCategory = sorted[2].category,
+            bonuses = Heroes.calculateFocusedBonuses(sorted[1].category, sorted[2].category)
+        }
+        return archetype, counts
+    end
+
+    -- Balanced: 2-2-0-0
+    if first == 2 and second == 2 then
+        local archetype = {
+            name = synergyArchetypes.balanced.name,
+            description = synergyArchetypes.balanced.description,
+            pattern = "balanced",
+            categories = { sorted[1].category, sorted[2].category },
+            bonuses = Heroes.calculateBalancedBonuses(sorted[1].category, sorted[2].category)
+        }
+        return archetype, counts
+    end
+
+    -- Versatile: 2-1-1-0
+    if first == 2 and second == 1 and third == 1 then
+        return synergyArchetypes.versatile, counts
+    end
+
+    -- Diverse: 1-1-1-1
+    if first == 1 and second == 1 and third == 1 and fourth == 1 then
+        return synergyArchetypes.diverse, counts
+    end
+
+    -- Fallback
+    return synergyArchetypes.none, counts
+end
+
+-- Calculate focused (3+1) bonuses
+function Heroes.calculateFocusedBonuses(primaryCat, secondaryCat)
+    local bonuses = {}
+    local base = synergyArchetypes.focused.baseBonuses
+
+    -- Primary category gets 10% bonus
+    if primaryCat == "OFFENSE" then
+        bonuses.successBonus = base.primaryMultiplier
+    elseif primaryCat == "DEFENSE" then
+        bonuses.injuryReduction = base.primaryMultiplier
+    elseif primaryCat == "WEALTH" then
+        bonuses.goldBonus = base.primaryMultiplier
+    elseif primaryCat == "SPEED" then
+        bonuses.questTimeReduction = base.primaryMultiplier
+    end
+
+    -- Secondary category gets 5% bonus
+    if secondaryCat == "OFFENSE" then
+        bonuses.successBonus = (bonuses.successBonus or 0) + base.secondaryMultiplier
+    elseif secondaryCat == "DEFENSE" then
+        bonuses.injuryReduction = (bonuses.injuryReduction or 0) + base.secondaryMultiplier
+    elseif secondaryCat == "WEALTH" then
+        bonuses.goldBonus = (bonuses.goldBonus or 0) + base.secondaryMultiplier
+    elseif secondaryCat == "SPEED" then
+        bonuses.questTimeReduction = (bonuses.questTimeReduction or 0) + base.secondaryMultiplier
+    end
+
+    return bonuses
+end
+
+-- Calculate balanced (2+2) bonuses
+function Heroes.calculateBalancedBonuses(cat1, cat2)
+    local bonuses = {}
+    local base = synergyArchetypes.balanced.baseBonuses
+
+    for _, cat in ipairs({ cat1, cat2 }) do
+        if cat == "OFFENSE" then
+            bonuses.successBonus = base.dualMultiplier
+        elseif cat == "DEFENSE" then
+            bonuses.injuryReduction = base.dualMultiplier
+        elseif cat == "WEALTH" then
+            bonuses.goldBonus = base.dualMultiplier
+        elseif cat == "SPEED" then
+            bonuses.questTimeReduction = base.dualMultiplier
+        end
+    end
+
+    return bonuses
+end
+
+-- Get synergy info for display
+function Heroes.getSynergyInfo(heroes)
+    local archetype, counts = Heroes.resolveSynergyArchetype(heroes)
+    return {
+        name = archetype.name,
+        description = archetype.description,
+        pattern = archetype.pattern,
+        bonuses = archetype.bonuses,
+        categoryCounts = counts
+    }
+end
+
+-- Get all passive effects from a party (individual + synergy combined)
+function Heroes.getPartyPassiveEffects(heroes)
+    local effects = {
+        successBonus = 0,
+        xpBonus = 0,
+        goldBonus = 0,
+        materialBonus = 0,
+        injuryReduction = 0,
+        deathReduction = 0,
+        questTimeReduction = 0,
+        recoveryReduction = 0,
+        travelTimeReduction = 0,
+        executeTimeReduction = 0
+    }
+
+    -- Add individual passive effects
+    for _, hero in ipairs(heroes) do
+        if hero.passive and hero.passive.effect then
+            local eff = hero.passive.effect
+            local val = eff.value or 0
+
+            if eff.type == "stat_quest_bonus" then
+                effects.successBonus = effects.successBonus + val
+            elseif eff.type == "party_size_bonus" then
+                effects.successBonus = effects.successBonus + (val * #heroes)
+            elseif eff.type == "party_injury_reduction" then
+                effects.injuryReduction = effects.injuryReduction + val
+            elseif eff.type == "party_death_reduction" then
+                effects.deathReduction = effects.deathReduction + val
+            elseif eff.type == "gold_bonus" then
+                effects.goldBonus = effects.goldBonus + val
+            elseif eff.type == "material_bonus" then
+                effects.materialBonus = effects.materialBonus + val
+            elseif eff.type == "travel_time_reduction" then
+                effects.travelTimeReduction = effects.travelTimeReduction + val
+            elseif eff.type == "execute_time_reduction" then
+                effects.executeTimeReduction = effects.executeTimeReduction + val
+            elseif eff.type == "party_rest_reduction" then
+                effects.recoveryReduction = effects.recoveryReduction + val
+            elseif eff.type == "self_rest_reduction" then
+                effects.recoveryReduction = effects.recoveryReduction + (val / #heroes)
+            end
+        end
+    end
+
+    -- Add synergy bonuses
+    local archetype = Heroes.resolveSynergyArchetype(heroes)
+    if archetype and archetype.bonuses then
+        for key, val in pairs(archetype.bonuses) do
+            if effects[key] then
+                effects[key] = effects[key] + val
+            end
+        end
+    end
+
+    return effects
 end
 
 return Heroes

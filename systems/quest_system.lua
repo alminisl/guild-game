@@ -6,6 +6,7 @@ local QuestSystem = {}
 -- Load EquipmentSystem for mount calculations
 local EquipmentSystem = require("systems.equipment_system")
 local PartySystem = require("systems.party_system")
+local Heroes = require("data.heroes")
 
 -- Assign heroes to a quest (starts the quest)
 function QuestSystem.assignParty(quest, heroes, gameData)
@@ -28,16 +29,28 @@ function QuestSystem.assignParty(quest, heroes, gameData)
 
     -- Calculate travel speed based on party mounts
     local travelMultiplier = EquipmentSystem.getPartyTravelSpeed(heroes)
-    local adjustedTravelTime = math.floor(quest.travelTime * travelMultiplier)
-    local adjustedReturnTime = math.floor(quest.returnTime * travelMultiplier)
+
+    -- Get passive time reductions
+    local passiveEffects = Heroes.getPartyPassiveEffects(heroes)
+    local travelReduction = 1 - (passiveEffects.travelTimeReduction or 0)
+    local executeReduction = 1 - (passiveEffects.executeTimeReduction or 0)
+    local questTimeReduction = 1 - (passiveEffects.questTimeReduction or 0)
+
+    -- Apply all time modifiers
+    local adjustedTravelTime = math.floor(quest.travelTime * travelMultiplier * travelReduction * questTimeReduction)
+    local adjustedReturnTime = math.floor(quest.returnTime * travelMultiplier * travelReduction * questTimeReduction)
+    local adjustedExecuteTime = math.floor(quest.executeTime * executeReduction * questTimeReduction)
 
     -- Store adjusted times on the quest
     quest.actualTravelTime = adjustedTravelTime
     quest.actualReturnTime = adjustedReturnTime
+    quest.actualExecuteTime = adjustedExecuteTime
     quest.travelSpeedMultiplier = travelMultiplier
+    quest.passiveEffects = passiveEffects  -- Store for later use
 
     -- Assign heroes to quest
     quest.assignedHeroes = {}
+    quest.heroesOnQuest = {}  -- Store actual hero data (they leave the guild!)
     for _, hero in ipairs(heroes) do
         table.insert(quest.assignedHeroes, hero.id)
         hero.status = "traveling"
@@ -45,6 +58,18 @@ function QuestSystem.assignParty(quest, heroes, gameData)
         hero.questPhase = "travel"
         hero.questProgress = 0
         hero.questPhaseMax = adjustedTravelTime
+        -- Store the hero on the quest itself
+        table.insert(quest.heroesOnQuest, hero)
+    end
+
+    -- Remove heroes from guild roster (they're off adventuring!)
+    for _, hero in ipairs(heroes) do
+        for i, guildHero in ipairs(gameData.heroes) do
+            if guildHero.id == hero.id then
+                table.remove(gameData.heroes, i)
+                break
+            end
+        end
     end
 
     quest.status = "active"
@@ -62,7 +87,18 @@ function QuestSystem.assignParty(quest, heroes, gameData)
         end
     end
 
-    return true, "Party sent on " .. quest.name .. "!"
+    -- Trigger departure animation (heroes walking out of guild)
+    if addDepartingHeroes then
+        addDepartingHeroes(heroes)
+    end
+
+    -- Build a fun departure message
+    local heroNames = {}
+    for _, hero in ipairs(heroes) do
+        table.insert(heroNames, hero.name)
+    end
+    local departureMsg = table.concat(heroNames, ", ") .. " waved goodbye and left the guild for " .. quest.name .. "!"
+    return true, departureMsg
 end
 
 -- Update all active quests (call every frame with dt)
@@ -99,12 +135,12 @@ function QuestSystem.update(gameData, dt, Heroes, Quests, Economy, GuildSystem, 
                         hero.status = "questing"
                         hero.questPhase = "execute"
                         hero.questProgress = 0
-                        hero.questPhaseMax = quest.executeTime
+                        hero.questPhaseMax = quest.actualExecuteTime or quest.executeTime
                     end
                 end
             end
         elseif quest.currentPhase == "execute" then
-            phaseMax = quest.executeTime
+            phaseMax = quest.actualExecuteTime or quest.executeTime
             if quest.phaseProgress >= phaseMax then
                 phaseComplete = true
                 quest.currentPhase = "return"
@@ -170,8 +206,8 @@ function QuestSystem.update(gameData, dt, Heroes, Quests, Economy, GuildSystem, 
                     local rankDiff = questRankValue - heroRankValue
                     local xpMultiplier = 1.0
                     if rankDiff > 0 and result.success then
-                        -- 50% bonus XP per rank above hero's rank (only on success)
-                        xpMultiplier = 1.0 + (rankDiff * 0.5)
+                        -- 30% bonus XP per rank above hero's rank (only on success)
+                        xpMultiplier = 1.0 + (rankDiff * 0.3)
                     end
                     local xpForHero = math.floor(baseXpPerHero * xpMultiplier)
 
@@ -256,19 +292,41 @@ function QuestSystem.update(gameData, dt, Heroes, Quests, Economy, GuildSystem, 
                     end
                 end
 
-                -- Remove dead heroes from roster and add to graveyard
-                for _, deadHero in ipairs(deadHeroes) do
-                    for i, hero in ipairs(gameData.heroes) do
-                        if hero.id == deadHero.id then
-                            table.remove(gameData.heroes, i)
-                            -- Add to graveyard
-                            deadHero.deathQuest = quest.name
-                            deadHero.deathDay = gameData.day
-                            table.insert(gameData.graveyard, deadHero)
-                            result.message = result.message .. " " .. deadHero.name .. " has fallen in combat!"
+                -- Return surviving heroes to the guild roster!
+                local returningHeroes = {}
+                for _, hero in ipairs(heroList) do
+                    local isDead = false
+                    for _, deadHero in ipairs(deadHeroes) do
+                        if deadHero.id == hero.id then
+                            isDead = true
                             break
                         end
                     end
+                    if not isDead then
+                        table.insert(gameData.heroes, hero)
+                        table.insert(returningHeroes, hero)
+                    end
+                end
+
+                -- Trigger arrival animation (heroes walking back to guild)
+                if #returningHeroes > 0 then
+                    if addArrivingHeroes then
+                        addArrivingHeroes(returningHeroes)
+                    end
+
+                    local names = {}
+                    for _, hero in ipairs(returningHeroes) do
+                        table.insert(names, hero.name)
+                    end
+                    result.message = result.message .. " " .. table.concat(names, ", ") .. " returned to the guild!"
+                end
+
+                -- Add dead heroes to graveyard
+                for _, deadHero in ipairs(deadHeroes) do
+                    deadHero.deathQuest = quest.name
+                    deadHero.deathDay = gameData.day
+                    table.insert(gameData.graveyard, deadHero)
+                    result.message = result.message .. " " .. deadHero.name .. " has fallen in combat!"
                 end
 
                 quest.status = result.success and "completed" or "failed"
@@ -330,11 +388,22 @@ function QuestSystem.update(gameData, dt, Heroes, Quests, Economy, GuildSystem, 
     return results
 end
 
--- Get hero by ID from game data
+-- Get hero by ID from game data (checks guild roster AND heroes on quests)
 function QuestSystem.getHeroById(heroId, gameData)
+    -- Check guild roster first
     for _, hero in ipairs(gameData.heroes) do
         if hero.id == heroId then
             return hero
+        end
+    end
+    -- Check heroes on active quests (they've left the guild temporarily!)
+    for _, quest in ipairs(gameData.activeQuests) do
+        if quest.heroesOnQuest then
+            for _, hero in ipairs(quest.heroesOnQuest) do
+                if hero.id == heroId then
+                    return hero
+                end
+            end
         end
     end
     return nil
@@ -342,6 +411,11 @@ end
 
 -- Get heroes assigned to a quest
 function QuestSystem.getQuestHeroes(quest, gameData)
+    -- Use heroesOnQuest directly if available (heroes have left the guild!)
+    if quest.heroesOnQuest and #quest.heroesOnQuest > 0 then
+        return quest.heroesOnQuest
+    end
+    -- Fallback to old method for backwards compatibility
     local heroes = {}
     for _, heroId in ipairs(quest.assignedHeroes) do
         local hero = QuestSystem.getHeroById(heroId, gameData)

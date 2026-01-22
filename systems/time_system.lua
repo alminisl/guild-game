@@ -1,11 +1,11 @@
 -- Time System Module
--- Real-time progression with day counter
+-- Simple day counter for progression tracking
 
 local TimeSystem = {}
 
 -- Time configuration
 TimeSystem.config = {
-    dayDuration = 360,  -- Real seconds per in-game day (6 minutes: 3 min day + 3 min night)
+    dayDuration = 360,  -- Real seconds per in-game day (6 minutes)
     timeScale = 1,      -- Speed multiplier (for testing: set higher)
 }
 
@@ -35,43 +35,6 @@ function TimeSystem.update(gameData, dt)
     return false
 end
 
--- Get time of day (0-1 maps to morning->night)
-function TimeSystem.getTimeOfDay(gameData)
-    return gameData.dayProgress or 0
-end
-
--- Get formatted time string
-function TimeSystem.getTimeString(gameData)
-    local progress = gameData.dayProgress or 0
-    local hour = math.floor(6 + progress * 18)  -- 6 AM to midnight
-    local period = hour >= 12 and "PM" or "AM"
-    local displayHour = hour > 12 and hour - 12 or hour
-    if displayHour == 0 then displayHour = 12 end
-    return string.format("%d:00 %s", displayHour, period)
-end
-
--- Get day period name
-function TimeSystem.getDayPeriod(gameData)
-    local progress = gameData.dayProgress or 0
-    if progress < 0.25 then return "Morning"
-    elseif progress < 0.5 then return "Midday"
-    elseif progress < 0.75 then return "Evening"
-    else return "Night"
-    end
-end
-
--- Check if it's currently night (last 25% of day)
-function TimeSystem.isNight(gameData)
-    local progress = gameData.dayProgress or 0
-    return progress >= 0.75
-end
-
--- Check if it's daytime (first 75% of day)
-function TimeSystem.isDay(gameData)
-    local progress = gameData.dayProgress or 0
-    return progress < 0.75
-end
-
 -- Format seconds into readable time
 function TimeSystem.formatDuration(seconds)
     if seconds < 60 then
@@ -88,26 +51,25 @@ function TimeSystem.setTimeScale(scale)
     TimeSystem.config.timeScale = scale
 end
 
--- Toggle between day and night manually
--- Returns true if transitioned to night, false if transitioned to day
-function TimeSystem.toggleDayNight(gameData)
-    local isCurrentlyNight = TimeSystem.isNight(gameData)
-
-    if isCurrentlyNight then
-        -- Move to day (start of morning)
-        gameData.dayProgress = 0.05  -- Early morning
-        gameData.day = gameData.day + 1  -- New day when moving from night to day
-        return false, "day"
-    else
-        -- Move to night
-        gameData.dayProgress = 0.76  -- Start of night
-        return true, "night"
-    end
+-- Legacy compatibility stubs (return false/neutral values)
+function TimeSystem.isNight(gameData)
+    return false
 end
 
--- Set specific time of day (0-1)
-function TimeSystem.setDayProgress(gameData, progress)
-    gameData.dayProgress = math.max(0, math.min(1, progress))
+function TimeSystem.isDay(gameData)
+    return true
+end
+
+function TimeSystem.getDayPeriod(gameData)
+    return "Day"
+end
+
+function TimeSystem.getTimeString(gameData)
+    return "Day " .. (gameData.day or 1)
+end
+
+function TimeSystem.toggleDayNight(gameData)
+    return false, "day"
 end
 
 return TimeSystem

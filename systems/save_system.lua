@@ -255,9 +255,7 @@ function SaveSystem.applyLoadedData(gameData, loadedData, Heroes, Quests, GuildS
 
     -- Regenerate available quests and tavern pool
     local maxRank = GuildSystem and GuildSystem.getMaxTavernRank(gameData) or "B"
-    local isNight = TimeSystem and TimeSystem.isNight(gameData) or false
-
-    gameData.availableQuests = Quests.generatePool(3, maxRank, isNight)
+    gameData.availableQuests = Quests.generatePool(3, maxRank)
     gameData.tavernPool = Heroes.generateTavernPool(4, maxRank, gameData.guild and gameData.guild.level or 1)
 
     return true
