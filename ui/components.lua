@@ -633,15 +633,18 @@ function Components.getCenteredMenu(menuWidth, menuHeight)
 
     local scaleX = availableW / menuWidth
     local scaleY = availableH / menuHeight
-    local scale = math.min(scaleX, scaleY, 1.5)  -- Cap at 1.5x to avoid too large
+    local rawScale = math.min(scaleX, scaleY, 2.0)  -- Cap at 2x max
+
+    -- Use integer scaling only (1x or 2x) for crisp text rendering
+    local scale = math.max(1, math.floor(rawScale))
 
     -- Calculate scaled dimensions
     local scaledW = menuWidth * scale
     local scaledH = menuHeight * scale
 
     -- Center in window
-    local x = (windowW - scaledW) / 2
-    local y = (windowH - scaledH) / 2
+    local x = math.floor((windowW - scaledW) / 2)
+    local y = math.floor((windowH - scaledH) / 2)
 
     return {
         x = x,

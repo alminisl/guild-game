@@ -518,7 +518,7 @@ local function drawBuilding(building, isHovered, mouseX, mouseY)
 
         if isHovered and b.description then
             local tooltipWidth = 180
-            local tooltipX = math.min(mouseX + 15, 1280 - tooltipWidth - 10)
+            local tooltipX = math.min(mouseX + 15, DESIGN_W - tooltipWidth - 10)
             local tooltipY = mouseY + 15
 
             love.graphics.setColor(0, 0, 0, 0.85)

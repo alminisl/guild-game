@@ -1,0 +1,35 @@
+---
+id: love2d-hero-status
+trigger: "when working with hero status or availability"
+confidence: 0.95
+domain: game-logic
+source: local-repo-analysis
+---
+
+# Hero Status System
+
+## Action
+Heroes have these status values:
+
+```lua
+hero.status = "idle"       -- Available for quests
+hero.status = "traveling"  -- En route to quest
+hero.status = "questing"   -- Executing quest
+hero.status = "awaiting"   -- Quest done, awaiting claim
+hero.status = "returning"  -- Coming back to guild
+hero.status = "resting"    -- Recovering after quest
+```
+
+## Status Flow
+```
+idle -> traveling -> questing -> awaiting -> returning -> resting -> idle
+```
+
+## Key Points
+- Check `hero.status == "idle"` for availability
+- Heroes leave gameData.heroes during quest (stored on quest.heroesOnQuest)
+- Return to gameData.heroes after returning phase
+- Always check status before assigning to quest
+
+## Evidence
+- Pattern from quest_system.lua, guild_menu.lua

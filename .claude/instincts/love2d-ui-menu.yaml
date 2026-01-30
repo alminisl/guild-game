@@ -1,0 +1,55 @@
+---
+id: love2d-ui-menu-pattern
+trigger: "when creating a new UI menu or screen"
+confidence: 0.95
+domain: love2d-ui
+source: local-repo-analysis
+---
+
+# UI Menu Module Pattern
+
+## Action
+Create UI menus with these required functions:
+
+```lua
+local Components = require("ui.components")
+
+local MenuName = {}
+
+local MENU_DESIGN_WIDTH = 800
+local MENU_DESIGN_HEIGHT = 600
+
+local selectedItem = nil  -- State variables
+
+function MenuName.resetState()
+    selectedItem = nil
+end
+
+function MenuName.draw(gameData, ...)
+    local menu = Components.getCenteredMenu(MENU_DESIGN_WIDTH, MENU_DESIGN_HEIGHT)
+    love.graphics.push()
+    love.graphics.translate(menu.x, menu.y)
+    love.graphics.scale(menu.scale, menu.scale)
+    -- Draw using design coordinates
+    love.graphics.pop()
+end
+
+function MenuName.handleClick(x, y, gameData, ...)
+    local menu = Components.getCenteredMenu(MENU_DESIGN_WIDTH, MENU_DESIGN_HEIGHT)
+    local designX = (x - menu.x) / menu.scale
+    local designY = (y - menu.y) / menu.scale
+    -- Handle clicks in design coordinates
+    return "result", "message"
+end
+
+return MenuName
+```
+
+## Key Points
+- Use MENU_DESIGN_WIDTH/HEIGHT for base dimensions
+- Always implement resetState(), draw(), handleClick()
+- Transform coordinates for scaling support
+- Return tuple (result, message) from handleClick
+
+## Evidence
+- Pattern from guild_menu.lua, tavern_menu.lua, armory_menu.lua

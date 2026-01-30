@@ -1,0 +1,40 @@
+---
+id: love2d-game-state-pattern
+trigger: "when working with game state or gameData"
+confidence: 0.95
+domain: love2d
+source: local-repo-analysis
+---
+
+# Game State Pattern
+
+## Action
+Game state is centralized in `gameData` table passed between modules:
+
+```lua
+-- In main.lua
+local gameData = {
+    day = 1,
+    gold = 200,
+    heroes = {},
+    activeQuests = {},
+    availableQuests = {},
+    inventory = {materials = {}, equipment = {}},
+    guild = nil,
+    -- etc.
+}
+
+-- Pass to modules
+MenuName.draw(gameData, OtherSystem, ...)
+MenuName.handleClick(x, y, gameData, OtherSystem, ...)
+```
+
+## Key Points
+- NEVER create global state variables
+- Always pass gameData as first argument to module functions
+- Systems modify gameData directly (no return value needed)
+- Initialize complex fields in love.load()
+
+## Evidence
+- All modules receive gameData parameter
+- Single source of truth pattern

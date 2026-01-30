@@ -5,6 +5,16 @@ local json = require("utils.json")
 
 local SaveSystem = {}
 
+-- Deep copy helper to avoid shared table references
+local function deepCopy(obj)
+    if type(obj) ~= "table" then return obj end
+    local copy = {}
+    for k, v in pairs(obj) do
+        copy[k] = deepCopy(v)
+    end
+    return copy
+end
+
 -- Save file configuration
 SaveSystem.SAVE_SLOTS = 3
 SaveSystem.SAVE_PREFIX = "save_slot_"
@@ -30,14 +40,26 @@ function SaveSystem.getSaveInfo(slot)
     local path = SaveSystem.getSavePath(slot)
     local info = love.filesystem.getInfo(path)
 
-    -- Load save to get metadata
-    local data, err = json.loadFile(path)
+    -- Load save to get metadata (with pcall protection for corrupted files)
+    local success, data, err = pcall(function()
+        return json.loadFile(path)
+    end)
+
+    if not success then
+        return {
+            slot = slot,
+            exists = true,
+            corrupted = true,
+            error = tostring(data)  -- data contains error message on pcall failure
+        }
+    end
+
     if not data then
         return {
             slot = slot,
             exists = true,
             corrupted = true,
-            error = err
+            error = err or "Unknown error"
         }
     end
 
@@ -71,6 +93,7 @@ local function prepareDataForSave(gameData)
         dayProgress = gameData.dayProgress,
         totalTime = gameData.totalTime,
         gold = gameData.gold,
+        sRankQuestsToday = gameData.sRankQuestsToday or 0,
 
         -- Guild data
         guild = gameData.guild,
@@ -96,13 +119,13 @@ local function prepareDataForSave(gameData)
             level = hero.level,
             xp = hero.xp,
             xpToLevel = hero.xpToLevel,
-            stats = hero.stats,
+            stats = deepCopy(hero.stats),
             status = "idle",  -- Reset to idle on load
             hireCost = hero.hireCost,
             isAwakened = hero.isAwakened,
             failureCount = hero.failureCount or 0,
-            injuryState = hero.injuryState,
-            equipment = hero.equipment,
+            injuryState = deepCopy(hero.injuryState),
+            equipment = deepCopy(hero.equipment),
             dungeonsCleared = hero.dungeonsCleared or 0,
             partyId = hero.partyId,
             -- Quest-related fields reset on load
@@ -117,9 +140,9 @@ local function prepareDataForSave(gameData)
         table.insert(saveData.heroes, savedHero)
     end
 
-    -- Serialize parties
-    saveData.parties = gameData.parties or {}
-    saveData.protoParties = gameData.protoParties or {}
+    -- Serialize parties (deep copy to avoid shared references)
+    saveData.parties = deepCopy(gameData.parties) or {}
+    saveData.protoParties = deepCopy(gameData.protoParties) or {}
 
     -- Serialize graveyard
     for _, hero in ipairs(gameData.graveyard) do
@@ -170,7 +193,15 @@ function SaveSystem.load(slot)
     end
 
     local path = SaveSystem.getSavePath(slot)
-    local data, err = json.loadFile(path)
+
+    -- Use pcall to safely load JSON (handles corrupted files)
+    local success, data, err = pcall(function()
+        return json.loadFile(path)
+    end)
+
+    if not success then
+        return nil, "Failed to load save: " .. tostring(data)
+    end
 
     if not data then
         return nil, "Failed to load save: " .. (err or "unknown error")
@@ -186,6 +217,7 @@ function SaveSystem.applyLoadedData(gameData, loadedData, Heroes, Quests, GuildS
     gameData.dayProgress = loadedData.dayProgress or 0
     gameData.totalTime = loadedData.totalTime or 0
     gameData.gold = loadedData.gold or 200
+    gameData.sRankQuestsToday = loadedData.sRankQuestsToday or 0
 
     -- Guild data
     if loadedData.guild then
@@ -211,13 +243,13 @@ function SaveSystem.applyLoadedData(gameData, loadedData, Heroes, Quests, GuildS
                 level = heroData.level,
                 xp = heroData.xp,
                 xpToLevel = heroData.xpToLevel,
-                stats = heroData.stats,
+                stats = deepCopy(heroData.stats),
                 status = "idle",
                 hireCost = heroData.hireCost,
                 isAwakened = heroData.isAwakened,
                 failureCount = heroData.failureCount or 0,
-                injuryState = heroData.injuryState,
-                equipment = heroData.equipment or {weapon = nil, armor = nil, accessory = nil, mount = nil},
+                injuryState = deepCopy(heroData.injuryState),
+                equipment = deepCopy(heroData.equipment) or {weapon = nil, armor = nil, accessory = nil, mount = nil},
                 dungeonsCleared = heroData.dungeonsCleared or 0,
                 partyId = heroData.partyId,
                 currentQuestId = nil,
@@ -232,9 +264,9 @@ function SaveSystem.applyLoadedData(gameData, loadedData, Heroes, Quests, GuildS
         end
     end
 
-    -- Parties and proto-parties
-    gameData.parties = loadedData.parties or {}
-    gameData.protoParties = loadedData.protoParties or {}
+    -- Parties and proto-parties (deep copy to avoid shared references)
+    gameData.parties = deepCopy(loadedData.parties) or {}
+    gameData.protoParties = deepCopy(loadedData.protoParties) or {}
 
     -- Restore party system next ID
     local PartySystem = require("systems.party_system")
@@ -246,6 +278,16 @@ function SaveSystem.applyLoadedData(gameData, loadedData, Heroes, Quests, GuildS
         if party.id > maxPartyId then maxPartyId = party.id end
     end
     PartySystem.setNextId(maxPartyId + 1)
+
+    -- Restore hero system next ID to prevent ID collisions with new heroes
+    local maxHeroId = 0
+    for _, hero in ipairs(gameData.heroes) do
+        if hero.id > maxHeroId then maxHeroId = hero.id end
+    end
+    for _, hero in ipairs(gameData.graveyard or {}) do
+        if hero.id and hero.id > maxHeroId then maxHeroId = hero.id end
+    end
+    Heroes.setNextId(maxHeroId + 1)
 
     -- Graveyard
     gameData.graveyard = loadedData.graveyard or {}

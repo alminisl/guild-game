@@ -22,11 +22,11 @@
             "S": 5
         },
         "baseStats": {
-            "D": { "min": 1, "max": 3, "cap": 8 },
-            "C": { "min": 3, "max": 5, "cap": 10 },
-            "B": { "min": 5, "max": 8, "cap": 12 },
-            "A": { "min": 8, "max": 12, "cap": 16 },
-            "S": { "min": 12, "max": 16, "cap": 20 }
+            "D": { "min": 5, "max": 15, "cap": 25 },
+            "C": { "min": 15, "max": 25, "cap": 40 },
+            "B": { "min": 25, "max": 40, "cap": 55 },
+            "A": { "min": 40, "max": 60, "cap": 75 },
+            "S": { "min": 60, "max": 80, "cap": 100 }
         },
         "guildLevelToHeroLevel": {
             "1": { "min": 1, "max": 2 },
@@ -51,7 +51,7 @@
     },
     "classes": {
         "Knight": {
-            "statBonus": { "str": 1, "dex": 0, "int": 0, "vit": 1, "luck": 0 },
+            "statBonus": { "str": 3, "dex": 0, "int": 0, "vit": 3, "luck": 0 },
             "description": "Heavy armor, high defense",
             "awakened": "Paladin",
             "primaryStat": "str",
@@ -66,7 +66,7 @@
             ]
         },
         "Archer": {
-            "statBonus": { "str": 0, "dex": 2, "int": 0, "vit": 0, "luck": 0 },
+            "statBonus": { "str": 0, "dex": 5, "int": 0, "vit": 0, "luck": 0 },
             "description": "Ranged attacks, high accuracy",
             "awakened": "Hawkeye",
             "primaryStat": "dex",
@@ -81,7 +81,7 @@
             ]
         },
         "Mage": {
-            "statBonus": { "str": 0, "dex": 0, "int": 2, "vit": 0, "luck": 0 },
+            "statBonus": { "str": 0, "dex": 0, "int": 5, "vit": 0, "luck": 0 },
             "description": "Powerful magic, low defense",
             "awakened": "Archmage",
             "primaryStat": "int",
@@ -96,7 +96,7 @@
             ]
         },
         "Rogue": {
-            "statBonus": { "str": 0, "dex": 1, "int": 0, "vit": 0, "luck": 1 },
+            "statBonus": { "str": 0, "dex": 3, "int": 0, "vit": 0, "luck": 2 },
             "description": "Fast and sneaky, critical hits",
             "awakened": "Shadow",
             "primaryStat": "dex",
@@ -111,7 +111,7 @@
             ]
         },
         "Priest": {
-            "statBonus": { "str": 0, "dex": 0, "int": 1, "vit": 1, "luck": 0 },
+            "statBonus": { "str": 0, "dex": 0, "int": 3, "vit": 3, "luck": 0 },
             "description": "Healing magic, support",
             "awakened": "Saint",
             "primaryStat": "int",
@@ -130,7 +130,7 @@
             }
         },
         "Ranger": {
-            "statBonus": { "str": 0, "dex": 1, "int": 0, "vit": 1, "luck": 0 },
+            "statBonus": { "str": 0, "dex": 3, "int": 0, "vit": 3, "luck": 0 },
             "description": "Versatile, nature skills",
             "awakened": "Warden",
             "primaryStat": "dex",
@@ -145,35 +145,35 @@
             ]
         },
         "Paladin": {
-            "statBonus": { "str": 5, "dex": 1, "int": 2, "vit": 4, "luck": 2 },
+            "statBonus": { "str": 10, "dex": 2, "int": 4, "vit": 8, "luck": 4 },
             "description": "Holy warrior, divine protection",
             "isAwakened": true,
             "baseClass": "Knight",
             "primaryStat": "str"
         },
         "Hawkeye": {
-            "statBonus": { "str": 1, "dex": 6, "int": 1, "vit": 1, "luck": 3 },
+            "statBonus": { "str": 2, "dex": 12, "int": 2, "vit": 2, "luck": 6 },
             "description": "Never misses, deadly precision",
             "isAwakened": true,
             "baseClass": "Archer",
             "primaryStat": "dex"
         },
         "Archmage": {
-            "statBonus": { "str": -1, "dex": 1, "int": 7, "vit": 0, "luck": 3 },
+            "statBonus": { "str": -2, "dex": 2, "int": 14, "vit": 0, "luck": 6 },
             "description": "Master of all magic",
             "isAwakened": true,
             "baseClass": "Mage",
             "primaryStat": "int"
         },
         "Shadow": {
-            "statBonus": { "str": 2, "dex": 5, "int": 1, "vit": 0, "luck": 4 },
+            "statBonus": { "str": 4, "dex": 10, "int": 2, "vit": 0, "luck": 8 },
             "description": "One with darkness, untouchable",
             "isAwakened": true,
             "baseClass": "Rogue",
             "primaryStat": "dex"
         },
         "Saint": {
-            "statBonus": { "str": 1, "dex": 1, "int": 5, "vit": 3, "luck": 3 },
+            "statBonus": { "str": 2, "dex": 2, "int": 10, "vit": 6, "luck": 6 },
             "description": "Divine healer, miracle worker",
             "isAwakened": true,
             "baseClass": "Priest",
@@ -184,7 +184,7 @@
             }
         },
         "Warden": {
-            "statBonus": { "str": 3, "dex": 4, "int": 2, "vit": 2, "luck": 2 },
+            "statBonus": { "str": 6, "dex": 8, "int": 4, "vit": 4, "luck": 4 },
             "description": "Nature's champion, beast bond",
             "isAwakened": true,
             "baseClass": "Ranger",
@@ -193,37 +193,37 @@
     },
     "races": {
         "Human": {
-            "statBonus": { "str": 0, "dex": 0, "int": 0, "vit": 0, "luck": 1 },
+            "statBonus": { "str": 0, "dex": 0, "int": 0, "vit": 0, "luck": 2 },
             "description": "Versatile and adaptable",
             "preferredClasses": ["Knight", "Archer", "Mage", "Rogue", "Priest", "Ranger"],
             "rarity": 30
         },
         "Dwarf": {
-            "statBonus": { "str": 1, "dex": 0, "int": 0, "vit": 1, "luck": 0 },
+            "statBonus": { "str": 2, "dex": 0, "int": 0, "vit": 2, "luck": 0 },
             "description": "Sturdy mountain folk",
             "preferredClasses": ["Knight", "Priest"],
             "rarity": 20
         },
         "Elf": {
-            "statBonus": { "str": 0, "dex": 1, "int": 1, "vit": 0, "luck": 0 },
+            "statBonus": { "str": 0, "dex": 2, "int": 2, "vit": 0, "luck": 0 },
             "description": "Ancient and magical",
             "preferredClasses": ["Mage", "Archer", "Priest", "Ranger"],
             "rarity": 15
         },
         "Halfling": {
-            "statBonus": { "str": 0, "dex": 1, "int": 0, "vit": 0, "luck": 1 },
+            "statBonus": { "str": 0, "dex": 2, "int": 0, "vit": 0, "luck": 2 },
             "description": "Small but nimble",
             "preferredClasses": ["Rogue", "Ranger", "Archer"],
             "rarity": 15
         },
         "Orc": {
-            "statBonus": { "str": 2, "dex": 0, "int": 0, "vit": 1, "luck": 0 },
+            "statBonus": { "str": 4, "dex": 0, "int": 0, "vit": 2, "luck": 0 },
             "description": "Fierce warriors",
             "preferredClasses": ["Knight", "Ranger"],
             "rarity": 10
         },
         "Gnome": {
-            "statBonus": { "str": 0, "dex": 0, "int": 2, "vit": 0, "luck": 1 },
+            "statBonus": { "str": 0, "dex": 0, "int": 4, "vit": 0, "luck": 2 },
             "description": "Clever tinkerers",
             "preferredClasses": ["Mage", "Rogue", "Priest"],
             "rarity": 10

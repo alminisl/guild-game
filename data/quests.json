@@ -8,25 +8,25 @@
             "S": 5
         },
         "timers": {
-            "D": { "travel": 3, "execute": 8, "return": 3 },
-            "C": { "travel": 5, "execute": 12, "return": 5 },
-            "B": { "travel": 7, "execute": 18, "return": 7 },
-            "A": { "travel": 10, "execute": 25, "return": 10 },
-            "S": { "travel": 15, "execute": 35, "return": 15 }
+            "D": { "travel": 2, "execute": 5, "return": 2 },
+            "C": { "travel": 3, "execute": 8, "return": 3 },
+            "B": { "travel": 5, "execute": 14, "return": 5 },
+            "A": { "travel": 8, "execute": 22, "return": 8 },
+            "S": { "travel": 12, "execute": 32, "return": 12 }
         },
         "expectedStats": {
-            "D": 5,
-            "C": 7,
-            "B": 10,
-            "A": 13,
-            "S": 16
+            "D": 18,
+            "C": 32,
+            "B": 50,
+            "A": 72,
+            "S": 92
         },
         "rankBonus": {
-            "D": 0.15,
-            "C": 0.05,
-            "B": 0,
+            "D": 0.20,
+            "C": 0.12,
+            "B": 0.05,
             "A": 0,
-            "S": 0
+            "S": -0.08
         },
         "deathRisk": {
             "D": { "canKill": false, "injuryOnly": true, "deathChance": 0 },
@@ -38,6 +38,27 @@
         "warnings": {
             "A": "WARNING: A-rank quests are deadly! Heroes may die on failure unless a Cleric is in the party.",
             "S": "DANGER: S-rank quests are extremely deadly! High chance of hero death on failure. Bring a Cleric!"
+        },
+        "dungeons": {
+            "floorCountByRank": {
+                "D": 3,
+                "C": 3,
+                "B": 4,
+                "A": 4,
+                "S": 5
+            },
+            "fatiguePerFloor": 0.05,
+            "deathRiskStartFloor": 3,
+            "deathChancePerFloor": {
+                "3": 0.10,
+                "4": 0.20,
+                "5": 0.30
+            },
+            "rewards": {
+                "xpMultiplier": 1.5,
+                "dropChanceMultiplier": 1.25,
+                "completionBonusMultiplier": 0.5
+            }
         }
     },
     "templates": {
@@ -198,6 +219,23 @@
                 "possibleRewards": [
                     { "type": "gold", "amount": 12, "dropChance": 0.6 },
                     { "type": "material", "id": "leather_scrap", "amount": 1, "dropChance": 0.3 }
+                ]
+            },
+            {
+                "name": "Abandoned Mine",
+                "description": "Explore the collapsed mine shafts (3 floors)",
+                "reward": 60,
+                "xpReward": 45,
+                "requiredStat": "str",
+                "faction": "dwarfs",
+                "combat": true,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "isDungeon": true,
+                "possibleRewards": [
+                    { "type": "material", "id": "copper_ore", "amount": 3, "dropChance": 0.7 },
+                    { "type": "material", "id": "rough_stone", "amount": 2, "dropChance": 0.5 },
+                    { "type": "gold", "amount": 15, "dropChance": 0.4 }
                 ]
             }
         ],
@@ -362,6 +400,24 @@
                     { "type": "gold", "amount": 40, "dropChance": 0.5 },
                     { "type": "item", "id": "minor_healing_potion", "amount": 2, "dropChance": 0.45 }
                 ]
+            },
+            {
+                "name": "Goblin Warren",
+                "description": "Clear the goblin tunnels beneath the hills (3 floors)",
+                "reward": 140,
+                "xpReward": 85,
+                "requiredStat": "dex",
+                "faction": "humans",
+                "combat": true,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "isDungeon": true,
+                "possibleRewards": [
+                    { "type": "material", "id": "iron_ingot", "amount": 2, "dropChance": 0.6 },
+                    { "type": "material", "id": "leather_scrap", "amount": 3, "dropChance": 0.5 },
+                    { "type": "gold", "amount": 30, "dropChance": 0.5 },
+                    { "type": "equipment", "id": "iron_sword", "amount": 1, "dropChance": 0.15 }
+                ]
             }
         ],
         "B": [
@@ -525,6 +581,24 @@
                     { "type": "gold", "amount": 120, "dropChance": 0.6 },
                     { "type": "material", "id": "quality_leather", "amount": 4, "dropChance": 0.55 },
                     { "type": "equipment", "id": "steel_blade", "amount": 1, "dropChance": 0.12 }
+                ]
+            },
+            {
+                "name": "Cursed Crypt",
+                "description": "Descend into the ancient burial chambers (4 floors)",
+                "reward": 350,
+                "xpReward": 200,
+                "requiredStat": "int",
+                "faction": "humans",
+                "combat": true,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "isDungeon": true,
+                "possibleRewards": [
+                    { "type": "material", "id": "enchanted_gem", "amount": 3, "dropChance": 0.6 },
+                    { "type": "material", "id": "mithril_ore", "amount": 1, "dropChance": 0.35 },
+                    { "type": "gold", "amount": 80, "dropChance": 0.5 },
+                    { "type": "equipment", "id": "enchanted_robe", "amount": 1, "dropChance": 0.12 }
                 ]
             }
         ],
@@ -691,6 +765,24 @@
                     { "type": "gold", "amount": 290, "dropChance": 0.55 },
                     { "type": "item", "id": "phoenix_feather", "amount": 1, "dropChance": 0.1 }
                 ]
+            },
+            {
+                "name": "Demon Depths",
+                "description": "Descend into the hellgate beneath the mountains (4 floors)",
+                "reward": 800,
+                "xpReward": 500,
+                "requiredStat": "vit",
+                "faction": "dwarfs",
+                "combat": true,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "isDungeon": true,
+                "possibleRewards": [
+                    { "type": "material", "id": "dragon_scale", "amount": 2, "dropChance": 0.5 },
+                    { "type": "material", "id": "mithril_ore", "amount": 3, "dropChance": 0.6 },
+                    { "type": "gold", "amount": 200, "dropChance": 0.5 },
+                    { "type": "item", "id": "phoenix_feather", "amount": 1, "dropChance": 0.15 }
+                ]
             }
         ],
         "S": [
@@ -827,6 +919,25 @@
                     { "type": "material", "id": "mithril_shard", "amount": 4, "dropChance": 0.65 },
                     { "type": "equipment", "id": "mithril_sword", "amount": 1, "dropChance": 0.18 },
                     { "type": "item", "id": "phoenix_feather", "amount": 2, "dropChance": 0.3 }
+                ]
+            },
+            {
+                "name": "Abyssal Citadel",
+                "description": "Conquer the fortress at the edge of reality (5 floors)",
+                "reward": 2000,
+                "xpReward": 1400,
+                "requiredStat": "str",
+                "faction": "humans",
+                "combat": true,
+                "materialBonus": true,
+                "timeOfDay": "any",
+                "isDungeon": true,
+                "possibleRewards": [
+                    { "type": "material", "id": "dragon_scale", "amount": 5, "dropChance": 0.7 },
+                    { "type": "material", "id": "mithril_shard", "amount": 4, "dropChance": 0.65 },
+                    { "type": "gold", "amount": 500, "dropChance": 0.6 },
+                    { "type": "equipment", "id": "mithril_armor", "amount": 1, "dropChance": 0.2 },
+                    { "type": "item", "id": "phoenix_feather", "amount": 2, "dropChance": 0.25 }
                 ]
             }
         ]

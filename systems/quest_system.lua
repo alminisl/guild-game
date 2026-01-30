@@ -8,6 +8,33 @@ local EquipmentSystem = require("systems.equipment_system")
 local PartySystem = require("systems.party_system")
 local Heroes = require("data.heroes")
 
+-- Hero lookup cache for O(1) access (rebuilt when needed)
+local heroLookupCache = {}
+local lastCacheRebuild = 0
+
+-- Rebuild hero lookup cache
+local function rebuildHeroLookup(gameData)
+    heroLookupCache = {}
+    -- Add heroes from guild roster
+    for _, hero in ipairs(gameData.heroes or {}) do
+        heroLookupCache[hero.id] = hero
+    end
+    -- Add heroes on active quests
+    for _, quest in ipairs(gameData.activeQuests or {}) do
+        if quest.heroesOnQuest then
+            for _, hero in ipairs(quest.heroesOnQuest) do
+                heroLookupCache[hero.id] = hero
+            end
+        end
+    end
+    lastCacheRebuild = love.timer.getTime()
+end
+
+-- Invalidate cache (call when heroes are added/removed)
+function QuestSystem.invalidateHeroCache()
+    heroLookupCache = {}
+end
+
 -- Assign heroes to a quest (starts the quest)
 function QuestSystem.assignParty(quest, heroes, gameData)
     if quest.status ~= "available" then
@@ -63,13 +90,19 @@ function QuestSystem.assignParty(quest, heroes, gameData)
     end
 
     -- Remove heroes from guild roster (they're off adventuring!)
+    -- Collect indices first, then remove in reverse order to avoid index shifting
+    local indicesToRemove = {}
     for _, hero in ipairs(heroes) do
         for i, guildHero in ipairs(gameData.heroes) do
             if guildHero.id == hero.id then
-                table.remove(gameData.heroes, i)
+                table.insert(indicesToRemove, i)
                 break
             end
         end
+    end
+    table.sort(indicesToRemove, function(a, b) return a > b end)
+    for _, i in ipairs(indicesToRemove) do
+        table.remove(gameData.heroes, i)
     end
 
     quest.status = "active"
@@ -141,226 +174,138 @@ function QuestSystem.update(gameData, dt, Heroes, Quests, Economy, GuildSystem, 
             end
         elseif quest.currentPhase == "execute" then
             phaseMax = quest.actualExecuteTime or quest.executeTime
-            if quest.phaseProgress >= phaseMax then
-                phaseComplete = true
-                quest.currentPhase = "return"
-                quest.phaseProgress = 0
-                -- Update heroes
-                for _, heroId in ipairs(quest.assignedHeroes) do
-                    local hero = QuestSystem.getHeroById(heroId, gameData)
-                    if hero then
-                        hero.status = "returning"
-                        hero.questPhase = "return"
-                        hero.questProgress = 0
-                        hero.questPhaseMax = quest.actualReturnTime or quest.returnTime
+
+            -- Dungeon multi-floor handling
+            if quest.isDungeon and quest.floorCount > 0 then
+                local floorTime = phaseMax / quest.floorCount
+                local currentFloorFromProgress = math.floor(quest.phaseProgress / floorTime) + 1
+
+                -- Check if we've advanced to a new floor
+                if currentFloorFromProgress > quest.currentFloor and quest.currentFloor < quest.floorCount then
+                    -- Resolve the completed floor
+                    local floorResult = QuestSystem.resolveFloor(quest, gameData, Heroes, Quests, EquipmentSystem)
+                    table.insert(quest.floorsCleared, floorResult)
+                    quest.currentFloor = currentFloorFromProgress
+
+                    -- Update fatigue
+                    local dungeonConfig = Quests.getDungeonConfig()
+                    quest.partyFatigue = quest.currentFloor * dungeonConfig.fatiguePerFloor
+
+                    -- Check for party wipe or retreat
+                    if floorResult.partyWiped or quest.hasRetreated then
+                        -- End dungeon early - transition to return
+                        quest.currentPhase = "return"
+                        quest.phaseProgress = 0
+                        for _, heroId in ipairs(quest.assignedHeroes) do
+                            local hero = QuestSystem.getHeroById(heroId, gameData)
+                            if hero then
+                                hero.status = "returning"
+                                hero.questPhase = "return"
+                                hero.questProgress = 0
+                                hero.questPhaseMax = quest.actualReturnTime or quest.returnTime
+                            end
+                        end
                     end
                 end
             end
+
+            if quest.phaseProgress >= phaseMax and quest.currentPhase == "execute" then
+                -- For dungeons, resolve the final floor if not already done
+                if quest.isDungeon and quest.currentFloor < quest.floorCount then
+                    local floorResult = QuestSystem.resolveFloor(quest, gameData, Heroes, Quests, EquipmentSystem)
+                    table.insert(quest.floorsCleared, floorResult)
+                    quest.currentFloor = quest.floorCount
+                end
+
+                phaseComplete = true
+                -- Transition to awaiting_claim - wait for player to click before showing result
+                quest.currentPhase = "awaiting_claim"
+                quest.phaseProgress = 0
+                -- Update heroes to "awaiting" status (quest done, waiting for claim)
+                for _, heroId in ipairs(quest.assignedHeroes) do
+                    local hero = QuestSystem.getHeroById(heroId, gameData)
+                    if hero then
+                        hero.status = "awaiting"
+                        hero.questPhase = "awaiting_claim"
+                    end
+                end
+            end
+        elseif quest.currentPhase == "awaiting_claim" then
+            -- Quest execution complete - waiting for player to claim
+            -- No automatic progression - player must click to claim
         elseif quest.currentPhase == "return" then
+            -- Heroes are returning after quest was claimed
             phaseMax = quest.actualReturnTime or quest.returnTime
             if quest.phaseProgress >= phaseMax then
-                -- Quest complete - resolve it
+                -- Return complete - heroes arrive back and start resting
                 local heroList = QuestSystem.getQuestHeroes(quest, gameData)
 
-                -- Check for party luck bonus before resolution
-                local partyLuckBonus = PartySystem.getLuckBonus(heroList, gameData)
-
-                local result = Quests.resolve(quest, heroList, partyLuckBonus)
-
-                -- Party re-roll mechanic: if quest failed and heroes are a formed party, try again
-                if not result.success and PartySystem.canReroll(heroList, gameData) then
-                    local rerollResult = Quests.resolve(quest, heroList, partyLuckBonus)
-                    if rerollResult.success then
-                        result = rerollResult
-                        result.message = "Party bond triggered a re-roll! " .. result.message
-                    else
-                        result.message = result.message .. " (Party re-roll also failed)"
-                    end
-                end
-
-                -- Track quest for party formation (only on success)
-                if result.success then
-                    local party, justFormed = PartySystem.recordQuestSuccess(heroList, gameData)
-                    if justFormed and party then
-                        result.message = result.message .. " " .. party.name .. " has officially formed!"
-                    end
-                end
-
-                -- Apply rewards
-                Economy.earn(gameData, result.goldReward)
-
-                -- Track dead and revived heroes
-                local deadHeroes = {}
-                local revivedHeroes = {}
-
-                -- Rank values for XP bonus calculation
-                local rankValues = {D = 1, C = 2, B = 3, A = 4, S = 5}
-                local questRankValue = rankValues[quest.rank] or 1
-
-                -- Award XP and handle death/revival
-                local baseXpPerHero = math.floor(result.xpReward / #heroList)
                 for _, hero in ipairs(heroList) do
-                    -- Calculate rank-differential XP bonus
-                    -- Heroes completing quests above their rank get bonus XP
-                    local heroRankValue = rankValues[hero.rank] or 1
-                    local rankDiff = questRankValue - heroRankValue
-                    local xpMultiplier = 1.0
-                    if rankDiff > 0 and result.success then
-                        -- 30% bonus XP per rank above hero's rank (only on success)
-                        xpMultiplier = 1.0 + (rankDiff * 0.3)
-                    end
-                    local xpForHero = math.floor(baseXpPerHero * xpMultiplier)
-
-                    local leveledUp = Heroes.addXP(hero, xpForHero)
-                    if leveledUp then
-                        result.message = result.message .. " " .. hero.name .. " leveled up!"
-                    end
-                    if rankDiff > 0 and result.success then
-                        result.message = result.message .. " " .. hero.name .. " gained bonus XP for besting a higher rank quest!"
-                    end
-
-                    -- Check for death on failed COMBAT quests (A/S rank ONLY)
-                    local shouldDie = false
-                    if not result.success and quest.combat then
-                        -- Formed parties with a cleric have guaranteed death protection
-                        local hasPartyClericProtection = PartySystem.hasClericProtection(heroList, gameData)
-                        if hasPartyClericProtection then
-                            -- Party cleric saves everyone - no death rolls
-                            shouldDie = false
-                        else
-                            -- Only A/S rank combat quest failures can cause death
-                            local deathChance = {A = 0.30, S = 0.50}
-                            local chance = deathChance[quest.rank]
-                            if chance then
-                                local roll = math.random()
-                                if roll < chance then
-                                    shouldDie = true
-                                end
-                            end
-                        end
-                        -- D/C/B rank quests CANNOT cause death
-                    end
-
-                    -- Check for Phoenix Feather if would die
-                    if shouldDie then
-                        local hasFeather = hero.equipment and hero.equipment.accessory == "phoenix_feather"
-                        if hasFeather then
-                            -- Consume Phoenix Feather and revive
-                            hero.equipment.accessory = nil
-                            shouldDie = false
-                            table.insert(revivedHeroes, hero)
-                            result.message = result.message .. " " .. hero.name .. "'s Phoenix Feather saved them!"
-                        else
-                            table.insert(deadHeroes, hero)
+                    -- Skip dead heroes
+                    local isDead = false
+                    for _, deadHero in ipairs(gameData.graveyard) do
+                        if deadHero.id == hero.id then
+                            isDead = true
+                            break
                         end
                     end
 
-                    -- Clear quest state
-                    hero.currentQuestId = nil
-                    hero.questPhase = nil
-                    hero.questProgress = 0
+                    if not isDead then
+                        hero.status = "resting"
+                        hero.restTime = 0
+                        hero.questPhase = nil
+                        hero.questProgress = nil
+                        hero.questPhaseMax = nil
+                        hero.currentQuestId = nil
 
-                    if not shouldDie then
-                        -- Check if party has cleric protection
-                        local hasClericProtection = false
-                        for _, h in ipairs(heroList) do
-                            if Heroes.providesDeathProtection(h) then
-                                hasClericProtection = true
+                        -- Calculate rest time based on fatigue
+                        local baseRestTime = Heroes.getBaseRestTime and Heroes.getBaseRestTime(hero) or 10
+                        local fatigueMultiplier = 1.0
+                        if hero.fatigueLevel then
+                            fatigueMultiplier = 1.0 + (hero.fatigueLevel * 0.25)
+                        end
+                        hero.restTimeMax = baseRestTime * fatigueMultiplier
+
+                        -- CRITICAL: Add hero back to guild roster
+                        local alreadyInRoster = false
+                        for _, h in ipairs(gameData.heroes) do
+                            if h.id == hero.id then
+                                alreadyInRoster = true
                                 break
                             end
                         end
-
-                        -- Determine and apply injury based on quest outcome
-                        local wasRevived = false
-                        for _, revived in ipairs(revivedHeroes) do
-                            if revived.id == hero.id then wasRevived = true break end
+                        if not alreadyInRoster then
+                            table.insert(gameData.heroes, hero)
                         end
-
-                        if wasRevived then
-                            -- Revived heroes are severely wounded
-                            Heroes.applyInjury(hero, "wounded")
-                        else
-                            -- Determine injury from quest outcome
-                            local injuryState = Heroes.determineInjury(quest.rank, result.success, hasClericProtection)
-                            if injuryState then
-                                Heroes.applyInjury(hero, injuryState)
-                            end
-                        end
-
-                        -- Start resting (injury multiplier is applied inside startResting)
-                        Heroes.startResting(hero, quest.rank, not result.success)
                     end
                 end
 
-                -- Return surviving heroes to the guild roster!
-                local returningHeroes = {}
+                -- Trigger arrival animation (heroes walking back to guild)
+                local arrivedHeroes = {}
                 for _, hero in ipairs(heroList) do
                     local isDead = false
-                    for _, deadHero in ipairs(deadHeroes) do
+                    for _, deadHero in ipairs(gameData.graveyard) do
                         if deadHero.id == hero.id then
                             isDead = true
                             break
                         end
                     end
                     if not isDead then
-                        table.insert(gameData.heroes, hero)
-                        table.insert(returningHeroes, hero)
+                        table.insert(arrivedHeroes, hero)
                     end
                 end
-
-                -- Trigger arrival animation (heroes walking back to guild)
-                if #returningHeroes > 0 then
-                    if addArrivingHeroes then
-                        addArrivingHeroes(returningHeroes)
-                    end
-
-                    local names = {}
-                    for _, hero in ipairs(returningHeroes) do
-                        table.insert(names, hero.name)
-                    end
-                    result.message = result.message .. " " .. table.concat(names, ", ") .. " returned to the guild!"
+                if addArrivingHeroes and #arrivedHeroes > 0 then
+                    addArrivingHeroes(arrivedHeroes)
                 end
 
-                -- Add dead heroes to graveyard
-                for _, deadHero in ipairs(deadHeroes) do
-                    deadHero.deathQuest = quest.name
-                    deadHero.deathDay = gameData.day
-                    table.insert(gameData.graveyard, deadHero)
-                    result.message = result.message .. " " .. deadHero.name .. " has fallen in combat!"
-                end
-
-                quest.status = result.success and "completed" or "failed"
+                -- Mark for removal
                 table.insert(questsToRemove, i)
 
-                -- Handle guild XP and reputation
-                local guildResult = {}
-                if GuildSystem then
-                    guildResult = GuildSystem.onQuestComplete(gameData, quest, result.success)
-                end
-
-                -- Calculate and add material drops (only on success)
-                local materialDrops = {}
-                if result.success and Materials then
-                    materialDrops = Materials.calculateDrops(quest, heroList, EquipmentSystem)
-
-                    -- Add materials to inventory
-                    for matId, count in pairs(materialDrops) do
-                        gameData.inventory.materials[matId] = (gameData.inventory.materials[matId] or 0) + count
-                    end
-                end
-
+                -- Notify that heroes returned
                 table.insert(results, {
+                    type = "return_complete",
                     quest = quest,
-                    success = result.success,
-                    goldReward = result.goldReward,
-                    xpReward = result.xpReward,
-                    message = result.message,
-                    deadHeroes = deadHeroes,
-                    materialDrops = materialDrops,
-                    -- Guild progression info
-                    guildLevelUp = guildResult.guildLevelUp,
-                    guildXP = guildResult.guildXP,
-                    tierChanged = guildResult.tierChanged
+                    message = "Heroes returned from " .. quest.name
                 })
             end
         end
@@ -388,19 +333,199 @@ function QuestSystem.update(gameData, dt, Heroes, Quests, Economy, GuildSystem, 
     return results
 end
 
+-- Claim a completed quest (called when player clicks on awaiting_claim quest)
+-- Returns the result to show in the popup, and starts the return phase
+function QuestSystem.claimQuest(quest, gameData, Heroes, Quests, Economy, GuildSystem, Materials, EquipmentSystem)
+    if quest.currentPhase ~= "awaiting_claim" then
+        return nil  -- Quest not ready to claim
+    end
+
+    local heroList = QuestSystem.getQuestHeroes(quest, gameData)
+
+    -- Check for party luck bonus before resolution
+    local partyLuckBonus = PartySystem.getLuckBonus(heroList, gameData)
+
+    local result
+    if quest.isDungeon then
+        -- Dungeon: compile results from floor clears
+        result = QuestSystem.compileDungeonResult(quest, heroList, gameData, Quests, partyLuckBonus)
+    else
+        -- Normal quest resolution
+        result = Quests.resolve(quest, heroList, partyLuckBonus)
+    end
+
+    -- Party re-roll mechanic: if quest failed and heroes are a formed party, try again
+    if not result.success and PartySystem.canReroll(heroList, gameData) then
+        local rerollResult = Quests.resolve(quest, heroList, partyLuckBonus)
+        if rerollResult.success then
+            result = rerollResult
+            result.message = "Party bond triggered a re-roll! " .. result.message
+        else
+            result.message = result.message .. " (Party re-roll also failed)"
+        end
+    end
+
+    -- Track quest for party formation (only on success)
+    if result.success then
+        local party, justFormed = PartySystem.recordQuestSuccess(heroList, gameData)
+        if justFormed and party then
+            result.message = result.message .. " " .. party.name .. " has officially formed!"
+        end
+    end
+
+    -- Apply rewards
+    Economy.earn(gameData, result.goldReward)
+
+    -- Track dead and revived heroes
+    local deadHeroes = {}
+    local revivedHeroes = {}
+
+    -- Rank values for XP bonus calculation
+    local rankValues = {D = 1, C = 2, B = 3, A = 4, S = 5}
+    local questRankValue = rankValues[quest.rank] or 1
+
+    -- Award XP and handle death/revival
+    local baseXpPerHero = #heroList > 0 and math.floor(result.xpReward / #heroList) or 0
+    for _, hero in ipairs(heroList) do
+        -- Calculate rank-differential XP bonus
+        local heroRankValue = rankValues[hero.rank] or 1
+        local rankDiff = questRankValue - heroRankValue
+        local xpMultiplier = 1.0
+        if rankDiff > 0 and result.success then
+            xpMultiplier = 1.0 + (rankDiff * 0.3)
+        end
+        local xpForHero = math.floor(baseXpPerHero * xpMultiplier)
+
+        local leveledUp = Heroes.addXP(hero, xpForHero)
+        if leveledUp then
+            result.message = result.message .. " " .. hero.name .. " leveled up!"
+        end
+        if rankDiff > 0 and result.success then
+            result.message = result.message .. " " .. hero.name .. " gained bonus XP for besting a higher rank quest!"
+        end
+
+        -- Check for death on failed COMBAT quests (A/S rank ONLY)
+        if not result.success and quest.combat then
+            local deathChance = {A = 0.30, S = 0.50}
+            local chance = deathChance[quest.rank]
+            if chance then
+                local hasPartyClericProtection = PartySystem.hasClericProtection(heroList, gameData)
+                if hasPartyClericProtection then
+                    chance = chance * 0.3
+                end
+                if math.random() < chance then
+                    -- Check for phoenix feather revival
+                    local revived = false
+                    if EquipmentSystem and EquipmentSystem.hasReviveItem then
+                        revived = EquipmentSystem.hasReviveItem(hero)
+                        if revived then
+                            EquipmentSystem.consumeReviveItem(hero)
+                            table.insert(revivedHeroes, hero)
+                        end
+                    end
+                    if not revived then
+                        table.insert(deadHeroes, hero)
+                    end
+                end
+            end
+        end
+    end
+
+    -- Remove dead heroes from roster
+    for _, deadHero in ipairs(deadHeroes) do
+        for i, hero in ipairs(gameData.heroes) do
+            if hero.id == deadHero.id then
+                table.remove(gameData.heroes, i)
+                break
+            end
+        end
+        deadHero.deathQuest = quest.name
+        deadHero.deathDay = gameData.day
+        table.insert(gameData.graveyard, deadHero)
+        result.message = result.message .. " " .. deadHero.name .. " has fallen in combat!"
+    end
+
+    -- Handle guild XP and reputation
+    local guildResult = {}
+    if GuildSystem then
+        guildResult = GuildSystem.onQuestComplete(gameData, quest, result.success)
+    end
+
+    -- Calculate and add material drops (only on success)
+    local materialDrops = {}
+    if result.success and Materials then
+        materialDrops = Materials.calculateDrops(quest, heroList, EquipmentSystem)
+        for matId, count in pairs(materialDrops) do
+            gameData.inventory.materials[matId] = (gameData.inventory.materials[matId] or 0) + count
+        end
+    end
+
+    -- Now start the return phase
+    quest.currentPhase = "return"
+    quest.phaseProgress = 0
+
+    -- Build a set of dead hero IDs for quick lookup
+    local deadHeroIds = {}
+    for _, deadHero in ipairs(deadHeroes) do
+        deadHeroIds[deadHero.id] = true
+    end
+
+    for _, heroId in ipairs(quest.assignedHeroes) do
+        local hero = QuestSystem.getHeroById(heroId, gameData)
+        if hero and not deadHeroIds[heroId] then
+            hero.status = "returning"
+            hero.questPhase = "return"
+            hero.questProgress = 0
+            hero.questPhaseMax = quest.actualReturnTime or quest.returnTime
+        end
+    end
+
+    -- Mark quest status
+    quest.status = result.success and "completed" or "failed"
+
+    -- Return full result for the popup
+    return {
+        quest = quest,
+        success = result.success,
+        goldReward = result.goldReward,
+        xpReward = result.xpReward,
+        message = result.message,
+        deadHeroes = deadHeroes,
+        materialDrops = materialDrops,
+        guildLevelUp = guildResult.guildLevelUp,
+        guildXP = guildResult.guildXP,
+        tierChanged = guildResult.tierChanged
+    }
+end
+
 -- Get hero by ID from game data (checks guild roster AND heroes on quests)
+-- Uses cached lookup for O(1) performance when cache is valid
 function QuestSystem.getHeroById(heroId, gameData)
+    -- Try cache first (rebuilds if empty)
+    if not heroLookupCache[heroId] then
+        -- Cache miss - rebuild and try again
+        rebuildHeroLookup(gameData)
+    end
+
+    local cachedHero = heroLookupCache[heroId]
+    if cachedHero then
+        return cachedHero
+    end
+
+    -- Fallback: linear search (cache may be stale)
     -- Check guild roster first
-    for _, hero in ipairs(gameData.heroes) do
+    for _, hero in ipairs(gameData.heroes or {}) do
         if hero.id == heroId then
+            heroLookupCache[heroId] = hero  -- Update cache
             return hero
         end
     end
     -- Check heroes on active quests (they've left the guild temporarily!)
-    for _, quest in ipairs(gameData.activeQuests) do
+    for _, quest in ipairs(gameData.activeQuests or {}) do
         if quest.heroesOnQuest then
             for _, hero in ipairs(quest.heroesOnQuest) do
                 if hero.id == heroId then
+                    heroLookupCache[heroId] = hero  -- Update cache
                     return hero
                 end
             end
@@ -453,6 +578,172 @@ function QuestSystem.getRestingHeroCount(gameData)
         end
     end
     return count
+end
+
+-- Resolve a single dungeon floor
+function QuestSystem.resolveFloor(quest, gameData, Heroes, Quests, EquipmentSystem)
+    local heroList = QuestSystem.getQuestHeroes(quest, gameData)
+    local floorNumber = quest.currentFloor + 1  -- Next floor to resolve
+    local dungeonConfig = Quests.getDungeonConfig()
+
+    local result = {
+        floor = floorNumber,
+        success = false,
+        rewards = {},
+        deaths = {},
+        injuries = {},
+        partyWiped = false
+    }
+
+    -- Calculate success chance with fatigue penalty
+    local successChance = Quests.calculateFloorSuccessChance(quest, heroList, floorNumber, EquipmentSystem)
+    result.success = math.random() <= successChance
+
+    if result.success then
+        -- Roll floor loot
+        local totalLuck = 0
+        for _, hero in ipairs(heroList) do
+            totalLuck = totalLuck + (hero.stats.luck or 5)
+        end
+        local avgLuck = totalLuck / #heroList
+        local luckMultiplier = 1.0 + (avgLuck - 5) * 0.05
+
+        result.rewards = Quests.rollFloorRewards(quest, luckMultiplier, floorNumber)
+    else
+        -- Floor failed - check for deaths (floor 3+)
+        local deathRisk = Quests.getFloorDeathRisk(quest, floorNumber)
+        if deathRisk.canKill and quest.combat then
+            local hasCleric = Quests.partyHasCleric(heroList)
+            local effectiveDeathChance = deathRisk.deathChance
+            if hasCleric then
+                effectiveDeathChance = effectiveDeathChance * 0.30  -- 70% reduction
+            end
+
+            for _, hero in ipairs(heroList) do
+                if math.random() <= effectiveDeathChance then
+                    table.insert(result.deaths, hero.id)
+                else
+                    table.insert(result.injuries, hero.id)
+                end
+            end
+        else
+            -- No death risk, just injuries
+            for _, hero in ipairs(heroList) do
+                table.insert(result.injuries, hero.id)
+            end
+        end
+
+        -- Check for party wipe
+        result.partyWiped = #result.deaths >= #heroList
+    end
+
+    return result
+end
+
+-- Compile final dungeon result from all floor results
+function QuestSystem.compileDungeonResult(quest, heroList, gameData, Quests, partyLuckBonus)
+    local dungeonConfig = Quests.getDungeonConfig()
+
+    -- Count successful floors
+    local floorsSucceeded = 0
+    local allRewards = {}
+    local allDeaths = {}
+    local allInjuries = {}
+
+    for _, floorResult in ipairs(quest.floorsCleared) do
+        if floorResult.success then
+            floorsSucceeded = floorsSucceeded + 1
+            -- Collect rewards from successful floors
+            for _, reward in ipairs(floorResult.rewards or {}) do
+                table.insert(allRewards, reward)
+            end
+        end
+
+        -- Track deaths/injuries across all floors
+        for _, heroId in ipairs(floorResult.deaths or {}) do
+            allDeaths[heroId] = true
+        end
+        for _, heroId in ipairs(floorResult.injuries or {}) do
+            if not allDeaths[heroId] then
+                allInjuries[heroId] = true
+            end
+        end
+    end
+
+    -- Determine if dungeon was fully completed
+    local dungeonComplete = floorsSucceeded == quest.floorCount and not quest.hasRetreated
+
+    -- Calculate rewards
+    local baseGold = quest.reward
+    local baseXP = quest.xpReward
+    local goldReward, xpReward
+
+    if dungeonComplete then
+        -- Full completion: apply dungeon bonuses
+        goldReward = math.floor(baseGold * (1 + dungeonConfig.rewards.completionBonusMultiplier))
+        xpReward = math.floor(baseXP * dungeonConfig.rewards.xpMultiplier)
+    else
+        -- Partial completion or retreat
+        local floorRatio = floorsSucceeded / quest.floorCount
+        goldReward = math.floor(baseGold * floorRatio * 0.5)
+        xpReward = math.floor(baseXP * floorRatio * 0.5)
+    end
+
+    -- Build result in same format as normal quest resolution
+    local result = {
+        quest = quest,
+        success = dungeonComplete,
+        goldReward = goldReward,
+        xpReward = xpReward,
+        bonusRewards = allRewards,
+        message = "",
+        -- Dungeon-specific fields
+        isDungeon = true,
+        floorsCleared = floorsSucceeded,
+        totalFloors = quest.floorCount,
+        hasRetreated = quest.hasRetreated,
+        floorBreakdown = quest.floorsCleared,
+        dungeonDeaths = allDeaths,
+        dungeonInjuries = allInjuries
+    }
+
+    if dungeonComplete then
+        result.message = "DUNGEON COMPLETED! All " .. quest.floorCount .. " floors cleared!"
+    elseif quest.hasRetreated then
+        result.message = "Party retreated after clearing " .. floorsSucceeded .. "/" .. quest.floorCount .. " floors."
+    else
+        result.message = "Dungeon failed! Only " .. floorsSucceeded .. "/" .. quest.floorCount .. " floors cleared."
+    end
+
+    return result
+end
+
+-- Handle dungeon retreat
+function QuestSystem.retreatFromDungeon(quest, gameData, Heroes)
+    if not quest.isDungeon or quest.currentPhase ~= "execute" then
+        return false, "Cannot retreat from this quest"
+    end
+
+    if quest.currentFloor < 1 then
+        return false, "Must clear at least one floor before retreating"
+    end
+
+    quest.hasRetreated = true
+    quest.currentPhase = "return"
+    quest.phaseProgress = 0
+
+    -- Mark heroes as returning
+    for _, heroId in ipairs(quest.assignedHeroes) do
+        local hero = QuestSystem.getHeroById(heroId, gameData)
+        if hero then
+            hero.status = "returning"
+            hero.questPhase = "return"
+            hero.questProgress = 0
+            hero.questPhaseMax = quest.actualReturnTime or quest.returnTime
+        end
+    end
+
+    return true, "Retreating from dungeon with " .. quest.currentFloor .. " floor(s) cleared"
 end
 
 return QuestSystem

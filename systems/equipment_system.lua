@@ -21,7 +21,7 @@ end
 function EquipmentSystem.getStatBonus(hero, statName)
     local totalBonus = 0
 
-    for _, slot in ipairs(Equipment.slots) do
+    for _, slot in ipairs(Equipment.slots or {}) do
         totalBonus = totalBonus + EquipmentSystem.getItemStatBonus(hero, slot, statName)
     end
 
@@ -32,7 +32,7 @@ end
 function EquipmentSystem.getTotalBonuses(hero)
     local bonuses = {str = 0, dex = 0, int = 0, vit = 0, luck = 0}
 
-    for _, slot in ipairs(Equipment.slots) do
+    for _, slot in ipairs(Equipment.slots or {}) do
         local equipId = hero.equipment[slot]
         if equipId then
             local item = Equipment.get(equipId)
@@ -146,7 +146,7 @@ end
 
 -- Check if hero has any equipment
 function EquipmentSystem.hasAnyEquipment(hero)
-    for _, slot in ipairs(Equipment.slots) do
+    for _, slot in ipairs(Equipment.slots or {}) do
         if hero.equipment[slot] then
             return true
         end

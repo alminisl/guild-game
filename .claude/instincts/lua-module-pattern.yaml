@@ -1,0 +1,37 @@
+---
+id: love2d-lua-module-pattern
+trigger: "when creating a new Lua module"
+confidence: 0.95
+domain: lua
+source: local-repo-analysis
+---
+
+# Lua Module Pattern
+
+## Action
+Create modules using this exact structure:
+
+```lua
+-- Module description comment
+local DependencyModule = require("path.to.dependency")
+
+local ModuleName = {}
+
+-- Public functions
+function ModuleName.functionName(args)
+    return result
+end
+
+return ModuleName
+```
+
+## Key Points
+- Always use `local ModuleName = {}` at top
+- Always `return ModuleName` at bottom
+- Dependencies via `require()` at top
+- Private helpers as `local function` (not in module table)
+- Public functions as `ModuleName.functionName()`
+
+## Evidence
+- Analyzed 30 Lua files
+- 100% follow this pattern

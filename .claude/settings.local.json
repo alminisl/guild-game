@@ -19,7 +19,8 @@
       "Bash(then ls \"/c/Program Files \\(x86\\)/LOVE\"/*.exe)",
       "Bash(fi)",
       "Bash(\"/c/Program Files/LOVE/love.exe\" .)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(grep:*)"
     ]
   }
 }

@@ -1,0 +1,46 @@
+---
+id: love2d-notification-pattern
+trigger: "when showing feedback or messages to player"
+confidence: 0.9
+domain: love2d-ui
+source: local-repo-analysis
+---
+
+# Notification Pattern
+
+## Action
+Use the notification system for player feedback:
+
+```lua
+-- In main.lua or via return value
+addNotification("Message to player", "success")  -- green
+addNotification("Warning message", "warning")    -- orange
+addNotification("Error occurred", "error")       -- red
+addNotification("Info message", "info")          -- gray
+
+-- From menu modules, return tuple:
+function Menu.handleClick(x, y, gameData, ...)
+    if success then
+        return "success", "Hero hired!"
+    elseif failed then
+        return "error", "Not enough gold"
+    end
+end
+
+-- Then in main.lua:
+local result, message = Menu.handleClick(...)
+if result == "success" then
+    addNotification(message, "success")
+elseif result == "error" then
+    addNotification(message, "error")
+end
+```
+
+## Key Points
+- Return (result, message) from handleClick
+- Use specific result strings: "success", "error", "close", etc.
+- Notifications auto-dismiss after 3 seconds
+- Max 3 notifications visible at once
+
+## Evidence
+- Pattern in main.lua mousepressed handler

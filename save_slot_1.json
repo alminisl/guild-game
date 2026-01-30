@@ -1,0 +1,235 @@
+{
+  "_savedAt": 1769772155,
+  "_version": 1,
+  "day": 3,
+  "dayProgress": 0.2127551356,
+  "gold": 556,
+  "graveyard": [],
+  "guild": {
+    "level": 2,
+    "reputation": {
+      "dwarfs": 4,
+      "elves": 4,
+      "humans": 62,
+      "orcs": 0
+    },
+    "xp": 360
+  },
+  "heroes": [
+    {
+      "class": "Archer",
+      "dungeonsCleared": 0,
+      "equipment": [],
+      "failureCount": 0,
+      "hireCost": 100,
+      "id": 8,
+      "isAwakened": false,
+      "level": 2,
+      "name": "Galadriel Moonwhisper",
+      "partyId": 2,
+      "questPhaseMax": 0,
+      "questProgress": 0,
+      "race": "Gnome",
+      "rank": "C",
+      "restProgress": 0,
+      "restSpeedBonus": 1,
+      "restTimeMax": 0,
+      "stats": {
+        "dex": 26,
+        "int": 26,
+        "luck": 17,
+        "str": 24,
+        "vit": 17
+      },
+      "status": "idle",
+      "xp": 70,
+      "xpToLevel": 200
+    },
+    {
+      "class": "Rogue",
+      "dungeonsCleared": 0,
+      "equipment": [],
+      "failureCount": 0,
+      "hireCost": 100,
+      "id": 7,
+      "isAwakened": false,
+      "level": 1,
+      "name": "Bilbo Shadowbane",
+      "questPhaseMax": 0,
+      "questProgress": 0,
+      "race": "Gnome",
+      "rank": "C",
+      "restProgress": 0,
+      "restSpeedBonus": 1,
+      "restTimeMax": 0,
+      "stats": {
+        "dex": 26,
+        "int": 29,
+        "luck": 21,
+        "str": 21,
+        "vit": 20
+      },
+      "status": "idle",
+      "xp": 23,
+      "xpToLevel": 100
+    },
+    {
+      "class": "Mage",
+      "dungeonsCleared": 0,
+      "equipment": [],
+      "failureCount": 0,
+      "hireCost": 50,
+      "id": 13,
+      "isAwakened": false,
+      "level": 3,
+      "name": "Elara Starfall",
+      "questPhaseMax": 0,
+      "questProgress": 0,
+      "race": "Gnome",
+      "rank": "D",
+      "restProgress": 0,
+      "restSpeedBonus": 1,
+      "restTimeMax": 0,
+      "stats": {
+        "dex": 8,
+        "int": 23,
+        "luck": 9,
+        "str": 14,
+        "vit": 12
+      },
+      "status": "idle",
+      "xp": 20,
+      "xpToLevel": 300
+    },
+    {
+      "class": "Rogue",
+      "dungeonsCleared": 0,
+      "equipment": [],
+      "failureCount": 0,
+      "hireCost": 50,
+      "id": 9,
+      "isAwakened": false,
+      "level": 2,
+      "name": "Wilhelm Fireborn",
+      "questPhaseMax": 0,
+      "questProgress": 0,
+      "race": "Halfling",
+      "rank": "D",
+      "restProgress": 0,
+      "restSpeedBonus": 1,
+      "restTimeMax": 0,
+      "stats": {
+        "dex": 17,
+        "int": 9,
+        "luck": 14,
+        "str": 11,
+        "vit": 11
+      },
+      "status": "idle",
+      "xp": 26,
+      "xpToLevel": 200
+    },
+    {
+      "class": "Rogue",
+      "dungeonsCleared": 0,
+      "equipment": [],
+      "failureCount": 0,
+      "hireCost": 100,
+      "id": 6,
+      "isAwakened": false,
+      "level": 2,
+      "name": "Ragnar Goldleaf",
+      "questPhaseMax": 0,
+      "questProgress": 0,
+      "race": "Human",
+      "rank": "C",
+      "restProgress": 0,
+      "restSpeedBonus": 1,
+      "restTimeMax": 0,
+      "stats": {
+        "dex": 23,
+        "int": 19,
+        "luck": 25,
+        "str": 17,
+        "vit": 22
+      },
+      "status": "idle",
+      "xp": 23,
+      "xpToLevel": 200
+    }
+  ],
+  "inventory": {
+    "equipment": {
+      "rusty_sword": 1
+    },
+    "materials": {
+      "copper_ore": 17,
+      "leather_scrap": 22,
+      "quality_leather": 1,
+      "rough_stone": 18,
+      "steel_bar": 4
+    }
+  },
+  "parties": [
+    {
+      "formedDate": 1,
+      "id": 1,
+      "isFormed": true,
+      "memberIds": [
+        1,
+        4,
+        5,
+        8
+      ],
+      "name": "The Noble Dragons",
+      "questsTogether": {
+        "1": 3,
+        "4": 3,
+        "5": 3,
+        "8": 3
+      },
+      "totalQuestsCompleted": 0
+    },
+    {
+      "formedDate": 1,
+      "id": 2,
+      "isFormed": true,
+      "memberIds": [
+        1,
+        4,
+        5,
+        8
+      ],
+      "name": "The Silver Lions",
+      "questsTogether": {
+        "1": 3,
+        "4": 3,
+        "5": 3,
+        "8": 3
+      },
+      "totalQuestsCompleted": 0
+    }
+  ],
+  "protoParties": [
+    {
+      "id": 3,
+      "isFormed": false,
+      "memberIds": [
+        1,
+        4,
+        5,
+        8
+      ],
+      "name": "The Mighty Sentinels",
+      "questsTogether": {
+        "1": 2,
+        "4": 2,
+        "5": 2,
+        "8": 2
+      },
+      "totalQuestsCompleted": 0
+    }
+  ],
+  "sRankQuestsToday": 0,
+  "totalTime": 796.5918488
+}

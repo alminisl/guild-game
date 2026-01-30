@@ -5,6 +5,16 @@ local json = require("utils.json")
 
 local Heroes = {}
 
+-- Deep copy helper to avoid shared table references
+local function deepCopy(obj)
+    if type(obj) ~= "table" then return obj end
+    local copy = {}
+    for k, v in pairs(obj) do
+        copy[k] = deepCopy(v)
+    end
+    return copy
+end
+
 -- Load hero data from JSON
 local heroData = nil
 local function loadHeroData()
@@ -465,14 +475,19 @@ function Heroes.generate(options)
         passive = nil  -- Will be assigned below
     }
 
-    -- Assign random passive from class passives
+    -- Assign random passive from class passives (deep copy to avoid shared references)
     if classData and classData.passives and #classData.passives > 0 then
         local randomIndex = math.random(#classData.passives)
-        hero.passive = classData.passives[randomIndex]
+        hero.passive = deepCopy(classData.passives[randomIndex])
     end
 
     nextHeroId = nextHeroId + 1
     return hero
+end
+
+-- Set the next hero ID (used when loading saves to prevent ID collisions)
+function Heroes.setNextId(id)
+    nextHeroId = id
 end
 
 -- Generate a pool of heroes for the tavern

@@ -1,0 +1,30 @@
+---
+id: love2d-naming-conventions
+trigger: "when naming variables, functions, or modules"
+confidence: 0.95
+domain: lua
+source: local-repo-analysis
+---
+
+# Naming Conventions
+
+## Action
+Follow these naming conventions strictly:
+
+| Type | Convention | Example |
+|------|------------|---------|
+| Modules | PascalCase | `QuestSystem`, `GuildMenu` |
+| Functions | camelCase | `calculateChance`, `handleClick` |
+| Variables | camelCase | `selectedHero`, `questResults` |
+| Constants | SCREAMING_SNAKE | `MAX_HEROES`, `STATE` |
+| Private funcs | local camelCase | `local function helper()` |
+| Table keys | camelCase | `{heroId = 1, questName = ""}` |
+
+## Key Points
+- Module names match file names (guild_menu.lua -> GuildMenu)
+- UI constants often SCREAMING_SNAKE (MENU_DESIGN_WIDTH)
+- JSON keys use camelCase
+- Enum-like tables use SCREAMING_SNAKE keys
+
+## Evidence
+- Consistent across 30+ Lua files

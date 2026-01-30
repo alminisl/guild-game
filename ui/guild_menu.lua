@@ -29,8 +29,8 @@ local function updateMenuRect()
     local rect = getMenuRect()
     MENU.x = rect.x
     MENU.y = rect.y
-    MENU_DESIGN_WIDTH = rect.width
-    MENU_DESIGN_HEIGHT = rect.height
+    MENU.width = rect.width
+    MENU.height = rect.height
     MENU.scale = rect.scale
     return MENU
 end
@@ -68,6 +68,17 @@ local hoveredSynergy = nil  -- Synergy currently being hovered
 local hoveredSynergyPos = nil  -- Position for tooltip
 local synergyHelpHovered = false  -- Is the synergy "?" icon hovered
 local hoveredHeroId = nil  -- Hero card being hovered (for status bar)
+
+-- Helper: Convert design coordinates to screen coordinates for scissor
+-- love.graphics.setScissor requires screen coords, not transformed coords
+local function setScissorDesign(x, y, w, h)
+    local scale = MENU.scale or 1
+    local screenX = MENU.x + x * scale
+    local screenY = MENU.y + y * scale
+    local screenW = w * scale
+    local screenH = h * scale
+    love.graphics.setScissor(screenX, screenY, screenW, screenH)
+end
 
 -- Reset selection state
 function GuildMenu.resetState()
@@ -1245,8 +1256,8 @@ function drawRosterTab(gameData, startY, height, Heroes, TimeSystem, GuildSystem
     -- Clamp scroll offset
     rosterScrollOffset = math.max(0, math.min(rosterScrollOffset, maxScroll))
 
-    -- Set up scissor for clipping
-    love.graphics.setScissor(listX, listStartY, actualListWidth, listHeight)
+    -- Set up scissor for clipping (use helper for screen coords)
+    setScissorDesign(listX, listStartY, actualListWidth, listHeight)
 
     -- Draw content with scroll offset
     local y = listStartY - rosterScrollOffset
@@ -1457,16 +1468,20 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
 
         -- Mode toggle buttons (Heroes / Parties)
         local toggleY = startY - 5
-        local toggleBtnWidth = 70
+        local toggleBtnWidth = 80
         local heroesActive = questSelectionMode == "heroes"
         local partiesActive = questSelectionMode == "parties"
 
-        -- Heroes toggle
-        Components.drawButton("Heroes", partyX + partyWidth - 150, toggleY, toggleBtnWidth, 22, {
+        -- Mode label
+        love.graphics.setColor(Components.colors.textDim)
+        love.graphics.print("Select:", partyX + partyWidth - 210, toggleY + 4)
+
+        -- Heroes toggle (individual selection)
+        Components.drawButton("Individual", partyX + partyWidth - 165, toggleY, toggleBtnWidth, 22, {
             color = heroesActive and Components.colors.buttonActive or Components.colors.button
         })
-        -- Parties toggle
-        Components.drawButton("Parties", partyX + partyWidth - 75, toggleY, toggleBtnWidth, 22, {
+        -- Parties toggle (whole party selection)
+        Components.drawButton("Party", partyX + partyWidth - 80, toggleY, 70, 22, {
             color = partiesActive and Components.colors.buttonActive or Components.colors.button
         })
 
@@ -1758,8 +1773,8 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
             -- Clamp scroll offset
             questHeroScrollOffset = math.max(0, math.min(questHeroScrollOffset, maxScroll))
 
-            -- Set up scissor for clipping
-            love.graphics.setScissor(partyX, listStartY, partyWidth, listHeight)
+            -- Set up scissor for clipping (use helper for screen coords)
+            setScissorDesign(partyX, listStartY, partyWidth, listHeight)
 
             -- Draw heroes with scroll offset
             local y = listStartY - questHeroScrollOffset
@@ -1797,6 +1812,15 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
                             love.graphics.print(statNames[reqStat] .. ":" .. heroStat .. "(+" .. heroEquipBonus .. ")", partyX + 105, y + 44)
                         else
                             love.graphics.print(statNames[reqStat] .. ":" .. heroStat, partyX + 105, y + 44)
+                        end
+
+                        -- Party indicator (show party name if hero is in a party)
+                        if hero.partyId then
+                            local party = PartySystem.getParty(hero.partyId, gameData)
+                            if party then
+                                love.graphics.setColor(0.6, 0.5, 0.8)
+                                love.graphics.print("[" .. (party.name or "Party") .. "]", partyX + partyWidth - 130, y + 8)
+                            end
                         end
 
                         -- Selection indicator (right side)
@@ -1871,9 +1895,13 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
 
             love.graphics.setScissor(partyX, listStartY, partyWidth, listHeight)
 
+            -- Hint about individual selection
+            love.graphics.setColor(0.5, 0.5, 0.6)
+            love.graphics.printf("Tip: Use 'Heroes' mode to select individuals", partyX, listStartY - 15, partyWidth - 10, "center")
+
             if #availableParties == 0 then
                 love.graphics.setColor(Components.colors.textDim)
-                love.graphics.printf("No formed parties available.\nForm a party by completing 3 quests\nwith 4 unique-class heroes!", partyX, listStartY + 20, partyWidth - scrollbarWidth - 10, "center")
+                love.graphics.printf("No formed parties available.\nForm a party by completing 3 quests\nwith 4 unique-class heroes!\n\nSwitch to 'Heroes' to select individually.", partyX, listStartY + 20, partyWidth - scrollbarWidth - 10, "center")
             else
                 local y = listStartY - questHeroScrollOffset
                 for i, partyData in ipairs(availableParties) do
@@ -1993,31 +2021,120 @@ function drawActiveTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
         local phaseColors = {
             travel = {0.5, 0.7, 0.9},
             execute = {0.9, 0.6, 0.3},
+            awaiting_claim = {0.3, 0.9, 0.3},
             ["return"] = {0.6, 0.9, 0.6}
         }
-        love.graphics.setColor(phaseColors[phase] or Components.colors.text)
-        love.graphics.print("Phase: " .. phase:upper(), 70, y + 30)
 
-        -- Phase progress bar
-        local phasePercent = Quests.getPhasePercent(quest)
-        local timeRemaining = Quests.getPhaseTimeRemaining(quest)
-        Components.drawProgressBar(200, y + 28, 200, 18, phasePercent, {
-            fgColor = phaseColors[phase] or Components.colors.progress,
-            text = TimeSystem.formatDuration(timeRemaining) .. " left"
-        })
+        if phase == "awaiting_claim" then
+            -- Quest complete - show claim button instead of progress
+            love.graphics.setColor(phaseColors[phase])
+            love.graphics.print("QUEST COMPLETE!", 70, y + 30)
+
+            -- Claim button
+            local claimBtnX = 200
+            local claimBtnY = y + 25
+            local claimBtnW = 120
+            local claimBtnH = 28
+
+            -- Store button position for click detection
+            quest._claimBtnPos = {x = claimBtnX, y = claimBtnY, w = claimBtnW, h = claimBtnH}
+
+            Components.drawButton("CLAIM REWARDS", claimBtnX, claimBtnY, claimBtnW, claimBtnH, {
+                bgColor = {0.2, 0.7, 0.3},
+                hoverColor = {0.3, 0.8, 0.4}
+            })
+        else
+            love.graphics.setColor(phaseColors[phase] or Components.colors.text)
+            love.graphics.print("Phase: " .. phase:upper(), 70, y + 30)
+
+            -- Phase progress bar
+            local phasePercent = Quests.getPhasePercent(quest)
+            local timeRemaining = Quests.getPhaseTimeRemaining(quest)
+            Components.drawProgressBar(200, y + 28, 200, 18, phasePercent, {
+                fgColor = phaseColors[phase] or Components.colors.progress,
+                text = TimeSystem.formatDuration(timeRemaining) .. " left"
+            })
+        end
+
+        -- Dungeon-specific display
+        if quest.isDungeon then
+            -- Floor progress indicator
+            local floorX = 420
+            love.graphics.setColor(Components.colors.text)
+            love.graphics.print("Floor: " .. (quest.currentFloor or 0) .. "/" .. quest.floorCount, floorX, y + 10)
+
+            -- Floor status dots
+            for f = 1, quest.floorCount do
+                local dotX = floorX + (f - 1) * 18
+                if f <= #(quest.floorsCleared or {}) then
+                    local floorResult = quest.floorsCleared[f]
+                    if floorResult and floorResult.success then
+                        love.graphics.setColor(Components.colors.success)
+                    else
+                        love.graphics.setColor(Components.colors.danger)
+                    end
+                elseif f == (quest.currentFloor or 0) + 1 then
+                    love.graphics.setColor(Components.colors.warning)
+                else
+                    love.graphics.setColor(0.3, 0.3, 0.3)
+                end
+                love.graphics.circle("fill", dotX + 6, y + 35, 5)
+            end
+
+            -- Fatigue indicator
+            local fatiguePercent = (quest.partyFatigue or 0) * 100
+            if fatiguePercent > 0 then
+                love.graphics.setColor(Components.colors.danger)
+                love.graphics.print(string.format("Fatigue: -%.0f%%", fatiguePercent), floorX, y + 48)
+            end
+
+            -- Dungeon label
+            love.graphics.setColor(0.8, 0.5, 0.9)
+            love.graphics.print("[DUNGEON]", 70, y + 48)
+
+            -- Retreat button (only during execute phase with at least 1 floor cleared)
+            if phase == "execute" and #(quest.floorsCleared or {}) >= 1 and not quest.hasRetreated then
+                local retreatBtnX = floorX + 120
+                local retreatBtnY = y + 44
+                local retreatBtnW = 70
+                local retreatBtnH = 24
+
+                -- Store button position for click detection
+                quest._retreatBtnPos = {x = retreatBtnX, y = retreatBtnY, w = retreatBtnW, h = retreatBtnH}
+
+                Components.drawButton("Retreat", retreatBtnX, retreatBtnY, retreatBtnW, retreatBtnH, {
+                    bgColor = {0.7, 0.3, 0.3},
+                    hoverColor = {0.8, 0.4, 0.4}
+                })
+            end
+        end
 
         -- Assigned heroes with sprites
         local heroX = 70
         love.graphics.setColor(Components.colors.textDim)
-        love.graphics.print("Party:", heroX, y + 52)
+        love.graphics.print("Party:", heroX, y + 62)
         heroX = heroX + 45
         for _, heroId in ipairs(quest.assignedHeroes) do
-            for _, hero in ipairs(gameData.heroes) do
-                if hero.id == heroId then
-                    -- Draw small sprite
-                    SpriteSystem.drawCentered(hero, heroX + 15, y + 60, 50, 50, "Idle")
-                    heroX = heroX + 35
-                    break
+            -- Check heroesOnQuest first (heroes physically on quest)
+            local heroFound = false
+            if quest.heroesOnQuest then
+                for _, hero in ipairs(quest.heroesOnQuest) do
+                    if hero.id == heroId then
+                        SpriteSystem.drawCentered(hero, heroX + 15, y + 70, 40, 40, "Idle")
+                        heroX = heroX + 30
+                        heroFound = true
+                        break
+                    end
+                end
+            end
+            -- Fallback to guild roster
+            if not heroFound then
+                for _, hero in ipairs(gameData.heroes) do
+                    if hero.id == heroId then
+                        SpriteSystem.drawCentered(hero, heroX + 15, y + 70, 40, 40, "Idle")
+                        heroX = heroX + 30
+                        break
+                    end
                 end
             end
         end
@@ -2027,6 +2144,12 @@ function drawActiveTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
         love.graphics.printf(quest.reward .. "g", cardWidth - 80, y + 10, 70, "right")
         love.graphics.setColor(Components.colors.textDim)
         love.graphics.printf("+" .. quest.xpReward .. " XP", cardWidth - 80, y + 28, 70, "right")
+
+        -- Dungeon XP bonus indicator
+        if quest.isDungeon then
+            love.graphics.setColor(0.6, 0.9, 0.6)
+            love.graphics.printf("+50% XP", cardWidth - 80, y + 45, 70, "right")
+        end
 
         y = y + 85
     end
@@ -2390,10 +2513,11 @@ function GuildMenu.handleClick(x, y, gameData, QuestSystem, Quests, Heroes, Guil
                                 -- Confirm fire
                                 for j, h in ipairs(gameData.heroes) do
                                     if h.id == hero.id then
-                                        if hero.equipment then
+                                        -- Return equipment to inventory (use passed gameData, not cached _gameData)
+                                        if hero.equipment and gameData.inventory and gameData.inventory.equipment then
                                             for slot, itemId in pairs(hero.equipment) do
-                                                if itemId and _gameData then
-                                                    _gameData.inventory.equipment[itemId] = (_gameData.inventory.equipment[itemId] or 0) + 1
+                                                if itemId then
+                                                    gameData.inventory.equipment[itemId] = (gameData.inventory.equipment[itemId] or 0) + 1
                                                 end
                                             end
                                         end
@@ -2446,18 +2570,18 @@ function GuildMenu.handleClick(x, y, gameData, QuestSystem, Quests, Heroes, Guil
 
             -- Mode toggle buttons
             local toggleY = contentY - 5
-            local toggleBtnWidth = 70
+            local toggleBtnWidth = 80
 
-            -- Heroes toggle button (design coordinates)
-            if Components.isPointInRect(designX, designY, partyX + partyWidth - 150, toggleY, toggleBtnWidth, 22) then
+            -- Individual (heroes) toggle button (design coordinates)
+            if Components.isPointInRect(designX, designY, partyX + partyWidth - 165, toggleY, toggleBtnWidth, 22) then
                 questSelectionMode = "heroes"
                 selectedPartyId = nil
                 questHeroScrollOffset = 0
                 return nil
             end
 
-            -- Parties toggle button (design coordinates)
-            if Components.isPointInRect(designX, designY, partyX + partyWidth - 75, toggleY, toggleBtnWidth, 22) then
+            -- Party toggle button (design coordinates)
+            if Components.isPointInRect(designX, designY, partyX + partyWidth - 80, toggleY, 70, 22) then
                 questSelectionMode = "parties"
                 selectedHeroes = {}
                 questHeroScrollOffset = 0
@@ -2611,6 +2735,42 @@ function GuildMenu.handleClick(x, y, gameData, QuestSystem, Quests, Heroes, Guil
                     end
                 end
             end
+        end
+    end
+
+    -- Active tab - click on claim button or retreat button
+    if currentTab == "active" then
+        local y = contentY + 30
+
+        for i, quest in ipairs(gameData.activeQuests) do
+            if y + 85 > MENU_DESIGN_HEIGHT - 20 then break end
+
+            -- Check for claim button click on awaiting_claim quests
+            if quest.currentPhase == "awaiting_claim" and quest._claimBtnPos then
+                local btn = quest._claimBtnPos
+                if Components.isPointInRect(designX, designY, btn.x, btn.y, btn.w, btn.h) then
+                    -- Return "claim_quest" action with the quest
+                    return "claim_quest", quest
+                end
+            end
+
+            -- Check for retreat button click on dungeon quests
+            if quest.isDungeon and quest._retreatBtnPos then
+                local btn = quest._retreatBtnPos
+                if Components.isPointInRect(designX, designY, btn.x, btn.y, btn.w, btn.h) then
+                    -- Trigger retreat
+                    if QuestSystem and QuestSystem.retreatFromDungeon then
+                        local success, message = QuestSystem.retreatFromDungeon(quest, gameData)
+                        if success then
+                            return "retreat", message
+                        else
+                            return "error", message or "Cannot retreat from dungeon"
+                        end
+                    end
+                end
+            end
+
+            y = y + 85
         end
     end
 

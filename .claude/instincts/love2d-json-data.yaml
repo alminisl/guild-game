@@ -1,0 +1,58 @@
+---
+id: love2d-json-data-pattern
+trigger: "when adding game data or configuration"
+confidence: 0.9
+domain: love2d-data
+source: local-repo-analysis
+---
+
+# JSON Data Loading Pattern
+
+## Action
+Store game data in JSON with Lua wrapper for access:
+
+```lua
+-- data/something.lua
+local json = require("utils.json")
+
+local Something = {}
+
+local dataCache = nil
+local function loadData()
+    if dataCache then return dataCache end
+    local data, err = json.loadFile("data/something.json")
+    if not data then
+        print("ERROR: " .. (err or "unknown"))
+        data = {fallback = true}  -- Minimal fallback
+    end
+    dataCache = data
+    return dataCache
+end
+
+-- Lazy accessor
+Something.items = setmetatable({}, {
+    __index = function(_, key)
+        return loadData().items[key]
+    end
+})
+
+function Something.getConfig(key)
+    return loadData().config[key]
+end
+
+function Something.reload()
+    dataCache = nil
+    loadData()
+end
+
+return Something
+```
+
+## Key Points
+- JSON for data, Lua wrapper for access
+- Lazy-load with caching
+- Always provide fallback data
+- Include reload() for hot-reload support
+
+## Evidence
+- Pattern from heroes.lua, quests.lua

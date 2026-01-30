@@ -1,0 +1,53 @@
+---
+id: love2d-ui-components
+trigger: "when drawing UI elements"
+confidence: 0.95
+domain: love2d-ui
+source: local-repo-analysis
+---
+
+# UI Components Usage
+
+## Action
+Use Components module for consistent UI:
+
+```lua
+local Components = require("ui.components")
+
+-- Buttons
+Components.drawButton("Label", x, y, w, h, {disabled = false, active = true})
+if Components.buttonClicked(mx, my, x, y, w, h) then
+    -- Handle click
+end
+
+-- Panels
+Components.drawPanel(x, y, w, h, {
+    color = Components.colors.panel,
+    cornerRadius = 10,
+    border = true
+})
+
+-- Rank badges
+Components.drawRankBadge(hero.rank, x, y, 24)
+
+-- Progress bars
+Components.drawProgressBar(x, y, w, h, progress, {
+    fgColor = Components.colors.success,
+    text = "50%"
+})
+
+-- Tooltips (call last in draw)
+Components.drawTooltip({"Line 1", "Line 2"}, x, y)
+
+-- Colors
+local color = Components.getRankColor(rank)  -- D/C/B/A/S colors
+```
+
+## Key Points
+- Always use Components for consistency
+- Colors defined in Components.colors
+- drawTooltip() should be called last (draws on top)
+- Check buttonClicked() in handleClick, not draw
+
+## Evidence
+- Used by all UI modules

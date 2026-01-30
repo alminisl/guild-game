@@ -111,6 +111,76 @@ function Quests.getWarning(rank)
     return nil
 end
 
+-- Get dungeon configuration
+function Quests.getDungeonConfig()
+    local data = loadQuestData()
+    if data.config.dungeons then
+        return data.config.dungeons
+    end
+    return {
+        floorCountByRank = {D = 3, C = 3, B = 4, A = 4, S = 5},
+        fatiguePerFloor = 0.05,
+        deathRiskStartFloor = 3,
+        deathChancePerFloor = {["3"] = 0.10, ["4"] = 0.20, ["5"] = 0.30},
+        rewards = {
+            xpMultiplier = 1.5,
+            dropChanceMultiplier = 1.25,
+            completionBonusMultiplier = 0.5
+        }
+    }
+end
+
+-- Calculate success chance for a specific dungeon floor (with fatigue penalty)
+function Quests.calculateFloorSuccessChance(quest, heroes, floorNumber, EquipmentSystem)
+    local config = Quests.getDungeonConfig()
+    local fatigueMultiplier = 1 - ((floorNumber - 1) * config.fatiguePerFloor)
+
+    -- Create adjusted hero stats with fatigue penalty
+    local adjustedHeroes = {}
+    for _, hero in ipairs(heroes) do
+        local adjusted = {
+            stats = {},
+            rank = hero.rank,
+            class = hero.class,
+            injuryState = hero.injuryState,
+            equipment = hero.equipment
+        }
+        for stat, value in pairs(hero.stats) do
+            adjusted.stats[stat] = math.floor(value * fatigueMultiplier)
+        end
+        table.insert(adjustedHeroes, adjusted)
+    end
+
+    return Quests.calculateSuccessChance(quest, adjustedHeroes, EquipmentSystem)
+end
+
+-- Get death risk for a specific dungeon floor
+function Quests.getFloorDeathRisk(quest, floorNumber)
+    local config = Quests.getDungeonConfig()
+    if floorNumber < config.deathRiskStartFloor then
+        return {canKill = false, deathChance = 0, clericProtection = false}
+    end
+
+    local floorKey = tostring(floorNumber)
+    local deathChance = config.deathChancePerFloor[floorKey] or 0.10
+
+    return {
+        canKill = true,
+        deathChance = deathChance,
+        clericProtection = true
+    }
+end
+
+-- Roll rewards for a single dungeon floor
+function Quests.rollFloorRewards(quest, luckMultiplier, floorNumber)
+    local config = Quests.getDungeonConfig()
+    local dropMultiplier = config.rewards.dropChanceMultiplier
+
+    return Quests.rollRewards({
+        possibleRewards = quest.possibleRewards
+    }, luckMultiplier * dropMultiplier)
+end
+
 -- Internal ID counter
 local nextQuestId = 1
 
@@ -198,6 +268,14 @@ function Quests.generate(rank, template)
         maxHeroes = maxHeroes + 2
     end
 
+    -- Get dungeon config if this is a dungeon
+    local isDungeon = template.isDungeon or false
+    local dungeonConfig = Quests.getDungeonConfig()
+    local floorCount = 0
+    if isDungeon and dungeonConfig.floorCountByRank then
+        floorCount = dungeonConfig.floorCountByRank[rank] or 3
+    end
+
     local quest = {
         id = nextQuestId,
         name = template.name,
@@ -227,7 +305,14 @@ function Quests.generate(rank, template)
         assignedHeroes = {},
         status = "available",
         currentPhase = nil,
-        phaseProgress = 0
+        phaseProgress = 0,
+        -- Dungeon-specific fields
+        isDungeon = isDungeon,
+        floorCount = floorCount,
+        currentFloor = 0,
+        floorsCleared = {},      -- Track each floor's result {success, rewards, deaths, injuries}
+        partyFatigue = 0,        -- Cumulative stat reduction (0.05 per floor)
+        hasRetreated = false     -- True if party chose to retreat early
     }
 
     nextQuestId = nextQuestId + 1
@@ -246,6 +331,8 @@ function Quests.getPhaseTimeRemaining(quest)
         phaseMax = quest.travelTime
     elseif quest.currentPhase == "execute" then
         phaseMax = quest.executeTime
+    elseif quest.currentPhase == "awaiting_claim" then
+        return 0  -- No time remaining - waiting for player
     elseif quest.currentPhase == "return" then
         phaseMax = quest.returnTime
     end
@@ -259,6 +346,8 @@ function Quests.getPhasePercent(quest)
         phaseMax = quest.travelTime
     elseif quest.currentPhase == "execute" then
         phaseMax = quest.executeTime
+    elseif quest.currentPhase == "awaiting_claim" then
+        return 1  -- 100% complete - waiting for player
     elseif quest.currentPhase == "return" then
         phaseMax = quest.returnTime
     end
@@ -267,7 +356,8 @@ function Quests.getPhasePercent(quest)
 end
 
 -- Generate a pool of available quests
-function Quests.generatePool(count, maxRank)
+-- gameData is optional, used for S-rank daily limit tracking
+function Quests.generatePool(count, maxRank, gameData)
     count = count or 5
     maxRank = maxRank or "B"
 
@@ -276,6 +366,10 @@ function Quests.generatePool(count, maxRank)
     for i, r in ipairs(rankOrder) do
         if r == maxRank then maxRankIndex = i break end
     end
+
+    -- S-rank daily limit (max 2 per day)
+    local S_RANK_DAILY_LIMIT = 2
+    local sRankQuestsToday = gameData and gameData.sRankQuestsToday or 0
 
     local templates = Quests.getTemplates()
     local pool = {}
@@ -293,6 +387,12 @@ function Quests.generatePool(count, maxRank)
         rankIndex = math.min(rankIndex, maxRankIndex)
         local rank = rankOrder[rankIndex]
 
+        -- Enforce S-rank daily limit: if at limit, downgrade to A-rank
+        if rank == "S" and sRankQuestsToday >= S_RANK_DAILY_LIMIT then
+            rank = "A"
+            rankIndex = 4
+        end
+
         -- Get all templates for this rank
         local rankTemplates = templates[rank] or {}
 
@@ -307,12 +407,19 @@ function Quests.generatePool(count, maxRank)
         end
 
         -- Fall back to random if all used
-        if not template and #filteredTemplates > 0 then
-            template = filteredTemplates[math.random(#filteredTemplates)]
+        if not template and #rankTemplates > 0 then
+            template = rankTemplates[math.random(#rankTemplates)]
         end
 
         if template then
-            table.insert(pool, Quests.generate(rank, template))
+            local quest = Quests.generate(rank, template)
+            table.insert(pool, quest)
+
+            -- Track S-rank generation for daily limit
+            if rank == "S" and gameData then
+                gameData.sRankQuestsToday = (gameData.sRankQuestsToday or 0) + 1
+                sRankQuestsToday = gameData.sRankQuestsToday
+            end
         end
     end
 
@@ -423,11 +530,11 @@ function Quests.calculateSuccessChance(quest, heroes, EquipmentSystem)
         rankBonus = config.rankBonus[quest.rank] or 0
     end
 
-    -- Primary stat bonus (weighted at 1.0)
-    local expectedStats = config.expectedStats or {D = 5, C = 7, B = 10, A = 13, S = 16}
-    local expected = expectedStats[quest.rank] or 8
+    -- Primary stat bonus (weighted at 1.0) - scaled for 1-100 stat system
+    local expectedStats = config.expectedStats or {D = 18, C = 32, B = 50, A = 72, S = 92}
+    local expected = expectedStats[quest.rank] or 35
     local avgPrimaryStat = totalPrimaryStat / #heroes
-    local primaryStatBonus = (avgPrimaryStat - expected) * 0.03
+    local primaryStatBonus = (avgPrimaryStat - expected) * 0.006
 
     -- Secondary stat bonuses (weighted by their importance)
     local secondaryStatBonus = 0
@@ -435,13 +542,13 @@ function Quests.calculateSuccessChance(quest, heroes, EquipmentSystem)
         local avgSecStat = (totalSecondaryStats[secStat.stat] or 0) / #heroes
         -- Secondary stats compared against a lower expectation
         local secExpected = math.floor(expected * 0.7)
-        local secBonus = (avgSecStat - secExpected) * 0.015 * secStat.weight
+        local secBonus = (avgSecStat - secExpected) * 0.003 * secStat.weight
         secondaryStatBonus = secondaryStatBonus + secBonus
     end
 
-    -- Luck bonus
+    -- Luck bonus (scaled for 1-100 system, baseline ~25)
     local avgLuck = totalLuck / #heroes
-    local luckBonus = (avgLuck - 5) * 0.01
+    local luckBonus = (avgLuck - 25) * 0.002
 
     -- Synergy bonuses (from party system)
     local synergyBonuses = Quests.getSynergyBonuses(heroes, quest)

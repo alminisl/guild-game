@@ -56,7 +56,8 @@ local gameData = {
     },
     graveyard = {},        -- Dead heroes (for display/resurrection)
     parties = {},          -- Formed parties (4 heroes with different classes, 3+ quests together)
-    protoParties = {}      -- Proto-parties (forming, not yet official)
+    protoParties = {},     -- Proto-parties (forming, not yet official)
+    sRankQuestsToday = 0   -- Daily limit tracker for S-rank quests (max 2 per day)
 }
 
 -- Current game state
@@ -69,6 +70,11 @@ local notificationTimer = 0
 -- Mouse position for hover effects
 local mouseX, mouseY = 0, 0
 
+-- Forward declarations for functions defined later
+local drawHeroAnimations
+local drawNotifications
+local addNotification
+
 -- Quest refresh timer (new quests appear periodically)
 local questRefreshTimer = 0
 local QUEST_REFRESH_INTERVAL = 60  -- New quest every 60 seconds
@@ -78,6 +84,14 @@ function love.load()
     love.window.setTitle("Guild Management - Day 1")
     love.window.setMode(1920, 1080, {resizable = true, minwidth = 1280, minheight = 720})
     love.graphics.setBackgroundColor(0.1, 0.1, 0.15)
+
+    -- Set default filter to nearest for crisp text and pixel art
+    love.graphics.setDefaultFilter("nearest", "nearest")
+
+    -- Initialize font with nearest filtering for crisp text
+    local font = love.graphics.newFont(14)
+    font:setFilter("nearest", "nearest")
+    love.graphics.setFont(font)
 
     -- Seed random
     math.randomseed(os.time())
@@ -91,7 +105,7 @@ function love.load()
     gameData.tavernPool = Heroes.generateTavernPool(4, maxRank, guildLevel)
 
     -- Initialize available quests
-    gameData.availableQuests = Quests.generatePool(5, maxRank)
+    gameData.availableQuests = Quests.generatePool(5, maxRank, gameData)
 
     -- Give player one starter hero (Human Knight)
     local starterHero = Heroes.generate({rank = "D", name = "Recruit Marcus", race = "Human", class = "Knight"})
@@ -144,6 +158,9 @@ function love.update(dt)
         love.window.setTitle("Guild Management - Day " .. gameData.day)
         addNotification("Day " .. gameData.day .. " begins!", "info")
 
+        -- Reset daily S-rank quest limit
+        gameData.sRankQuestsToday = 0
+
         -- Refresh tavern on new day (uses guild max rank and level)
         local maxRank = GuildSystem.getMaxTavernRank(gameData)
         local guildLevel = gameData.guild.level or 1
@@ -153,53 +170,14 @@ function love.update(dt)
     -- Update quest system (real-time quest progress)
     local questResults = QuestSystem.update(gameData, dt, Heroes, Quests, Economy, GuildSystem, Materials, EquipmentSystem)
     for _, result in ipairs(questResults) do
-        if result.quest then
-            -- Quest completed - show modal with detailed results
-            -- Build hero list from quest
-            local heroList = {}
-            for _, heroId in ipairs(result.quest.assignedHeroes or {}) do
-                for _, hero in ipairs(gameData.heroes) do
-                    if hero.id == heroId then
-                        table.insert(heroList, hero)
-                        break
-                    end
-                end
-            end
-
-            -- Also check graveyard for fallen heroes
-            for _, hero in ipairs(gameData.graveyard) do
-                for _, heroId in ipairs(result.quest.assignedHeroes or {}) do
-                    if hero.id == heroId then
-                        table.insert(heroList, hero)
-                        break
-                    end
-                end
-            end
-
-            -- Build and push modal result
-            local modalResult = QuestResultModal.buildResult(
-                result.quest,
-                result,
-                heroList,
-                result.materialDrops,
-                {guildXP = result.guildXP, guildLevelUp = result.guildLevelUp},
-                Heroes
-            )
-            QuestResultModal.push(modalResult)
-
-            -- Still show toast for quick info
-            local msgType = result.success and "success" or "warning"
-            addNotification(result.quest.name .. ": " .. (result.success and "Complete!" or "Failed!"), msgType)
-
-            -- Faction tier change notification (keep as toast since it's separate info)
-            if result.tierChanged then
-                local factionName = GuildSystem.factions[result.tierChanged.faction].name
-                addNotification("Now " .. result.tierChanged.tier.name .. " with " .. factionName, "info")
-            end
+        if result.type == "return_complete" then
+            -- Heroes have returned from quest - show notification
+            addNotification(result.message, "info")
         elseif result.type == "rest_complete" then
             -- Hero finished resting
             addNotification(result.message, "info")
         end
+        -- Note: Quest result popups now shown via GuildMenu when clicking awaiting_claim quests
     end
 
     -- Quest refresh timer (add new quests periodically)
@@ -208,11 +186,13 @@ function love.update(dt)
         questRefreshTimer = 0
         if #gameData.availableQuests < 5 then
             local maxRank = GuildSystem.getMaxTavernRank(gameData)
-            local newQuests = Quests.generatePool(1, maxRank)
+            local newQuests = Quests.generatePool(1, maxRank, gameData)
             for _, q in ipairs(newQuests) do
                 table.insert(gameData.availableQuests, q)
             end
-            addNotification("A new quest is available!", "info")
+            if #newQuests > 0 then
+                addNotification("A new quest is available!", "info")
+            end
         end
     end
 
@@ -226,14 +206,7 @@ function love.update(dt)
     end
 end
 
--- Get max rank based on day
-function getMaxRankForDay(day)
-    if day >= 25 then return "S"
-    elseif day >= 15 then return "A"
-    elseif day >= 7 then return "B"
-    else return "C"
-    end
-end
+-- Note: Max rank is now determined by GuildSystem.getMaxTavernRank() based on guild level
 
 -- Draw game
 function love.draw()
@@ -283,22 +256,28 @@ end
 -- Hero animation state
 local heroAnims = {}
 local heroAnimTime = 0
+-- Pre-allocated table for removal indices (avoids allocation in update loop)
+local animsToRemove = {}
 
 -- Draw heroes leaving/arriving
-function drawHeroAnimations()
+drawHeroAnimations = function()
+    if #heroAnims == 0 then return end
+
     local dt = love.timer.getDelta()
     heroAnimTime = heroAnimTime + dt
-    local toRemove = {}
+
+    -- Clear reusable table
+    for i = 1, #animsToRemove do animsToRemove[i] = nil end
 
     for i, anim in ipairs(heroAnims) do
         -- Update position
         anim.y = anim.y + anim.speedY * dt
 
         -- Check if done
-        if anim.type == "departing" and anim.y > 800 then
-            table.insert(toRemove, i)
-        elseif anim.type == "arriving" and anim.y < anim.targetY then
-            table.insert(toRemove, i)
+        if anim.type == "departing" and anim.y >= anim.targetY then
+            table.insert(animsToRemove, i)
+        elseif anim.type == "arriving" and anim.y <= anim.targetY then
+            table.insert(animsToRemove, i)
         end
 
         -- Draw the hero sprite using Walk animation
@@ -324,54 +303,68 @@ function drawHeroAnimations()
     end
 
     -- Remove finished animations
-    for i = #toRemove, 1, -1 do
-        table.remove(heroAnims, toRemove[i])
+    for i = #animsToRemove, 1, -1 do
+        table.remove(heroAnims, animsToRemove[i])
     end
 end
 
--- Add departing heroes (called from quest system)
--- Heroes walk in single file line from guild down
+-- Add departing heroes (called from quest system via global lookup)
+-- Heroes walk from guild hall toward bottom of screen
+-- NOTE: This function is intentionally global as it's called from quest_system.lua
 function addDepartingHeroes(heroes)
-    local startX = 640  -- Center of screen (guild position)
-    local verticalSpacing = 60  -- Space between heroes in the line
+    local guildX = 640   -- Center of screen (guild position)
+    local guildY = 280   -- Below the guild building
+    local exitY = 800    -- Off screen at bottom
+    local horizontalSpacing = 50  -- Space between heroes walking side by side
+
+    -- Center the group horizontally
+    local startX = guildX - (#heroes - 1) * horizontalSpacing / 2
 
     for i, hero in ipairs(heroes) do
         table.insert(heroAnims, {
             hero = hero,
-            x = startX,
-            y = 150 - (i - 1) * verticalSpacing,  -- Staggered start (leader first)
-            speedY = 180,
+            x = startX + (i - 1) * horizontalSpacing,
+            y = guildY,
+            targetY = exitY,
+            speedY = 150,
             type = "departing"
         })
     end
 end
 
--- Add arriving heroes (called from quest system)
--- Heroes walk in single file line back to guild
+-- Add arriving heroes (called from quest system via global lookup)
+-- Heroes walk from bottom of screen back to guild hall
+-- NOTE: This function is intentionally global as it's called from quest_system.lua
 function addArrivingHeroes(heroes)
-    local startX = 640  -- Center of screen (guild position)
-    local verticalSpacing = 60  -- Space between heroes in the line
+    local guildX = 640   -- Center of screen (guild position)
+    local guildY = 280   -- Below the guild building
+    local exitY = 800    -- Off screen at bottom
+    local horizontalSpacing = 50  -- Space between heroes walking side by side
+
+    -- Center the group horizontally
+    local startX = guildX - (#heroes - 1) * horizontalSpacing / 2
 
     for i, hero in ipairs(heroes) do
         table.insert(heroAnims, {
             hero = hero,
-            x = startX,
-            y = 800 + (i - 1) * verticalSpacing,  -- Staggered start (leader first)
-            targetY = 150,
-            speedY = -180,
+            x = startX + (i - 1) * horizontalSpacing,
+            y = exitY,
+            targetY = guildY,
+            speedY = -150,
             type = "arriving"
         })
     end
 end
 
 -- Draw notification messages (top-right corner)
-function drawNotifications()
+drawNotifications = function()
+    local screenW = love.graphics.getWidth()
     local notifWidth = 350
     local notifHeight = 32
-    local notifX = 1280 - notifWidth - 10  -- Right side with 10px margin
+    local notifX = screenW - notifWidth - 10  -- Right side with 10px margin
     local y = 50  -- Start from top (below header bar)
 
-    for i, notif in ipairs(notifications) do
+    for _, notif in ipairs(notifications) do
         local alpha = math.min(1, (3 - notificationTimer) * 2)
         love.graphics.setColor(notif.color[1], notif.color[2], notif.color[3], alpha * 0.9)
 
@@ -391,7 +384,7 @@ function drawNotifications()
 end
 
 -- Add a notification
-function addNotification(message, notifType)
+addNotification = function(message, notifType)
     local color
     if notifType == "success" then
         color = {0.2, 0.5, 0.3}
@@ -481,6 +474,35 @@ function love.mousepressed(x, y, button)
             addNotification(message, "success")
         elseif result == "fired" then
             addNotification(message, "info")
+        elseif result == "claim_quest" then
+            -- message is actually the quest object
+            local quest = message
+            local claimResult = QuestSystem.claimQuest(quest, gameData, Heroes, Quests, Economy, GuildSystem, Materials, EquipmentSystem)
+            if claimResult then
+                -- Build hero list from quest
+                local heroList = QuestSystem.getQuestHeroes(quest, gameData)
+
+                -- Build and push modal result
+                local modalResult = QuestResultModal.buildResult(
+                    claimResult.quest,
+                    claimResult,
+                    heroList,
+                    claimResult.materialDrops,
+                    {guildXP = claimResult.guildXP, guildLevelUp = claimResult.guildLevelUp},
+                    Heroes
+                )
+                QuestResultModal.push(modalResult)
+
+                -- Show toast notification
+                local msgType = claimResult.success and "success" or "warning"
+                addNotification(quest.name .. ": " .. (claimResult.success and "Complete!" or "Failed!"), msgType)
+
+                -- Faction tier change notification
+                if claimResult.tierChanged then
+                    local factionName = GuildSystem.factions[claimResult.tierChanged.faction].name
+                    addNotification("Now " .. claimResult.tierChanged.tier.name .. " with " .. factionName, "info")
+                end
+            end
         elseif result == "error" then
             addNotification(message, "error")
         end
