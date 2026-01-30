@@ -1567,9 +1567,9 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
         end
 
         -- Pentagon stat comparison chart (quest requirements vs party stats)
-        local pentagonX = partyX + partyWidth - 85
-        local pentagonY = startY + 100
-        local pentagonRadius = 55
+        local pentagonX = partyX + partyWidth - 120
+        local pentagonY = startY + 110
+        local pentagonRadius = 50
 
         -- Get quest requirements and party stats (summed across all heroes)
         local questReqs = getQuestStatRequirements(selectedQuest, Quests)
@@ -1603,7 +1603,10 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
 
         -- Chart legend and combined stats display
         love.graphics.setColor(Components.colors.textDim)
-        love.graphics.print("Combined Stats", pentagonX - 35, pentagonY + pentagonRadius + 8)
+        local combinedStatsText = "Combined Stats"
+        local font = love.graphics.getFont()
+        local textWidth = font:getWidth(combinedStatsText)
+        love.graphics.print(combinedStatsText, pentagonX - textWidth / 2, pentagonY + pentagonRadius + 22)
         if #partyHeroes > 0 then
             -- Show hero count
             love.graphics.setColor(0.3, 0.7, 0.3)
