@@ -1608,20 +1608,23 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
         local textWidth = font:getWidth(combinedStatsText)
         love.graphics.print(combinedStatsText, pentagonX - textWidth / 2, pentagonY + pentagonRadius + 22)
         if #partyHeroes > 0 then
-            -- Show hero count
+            -- Show hero count (centered)
+            local heroCountText = #partyHeroes .. " hero" .. (#partyHeroes > 1 and "es" or "")
+            local heroCountWidth = font:getWidth(heroCountText)
             love.graphics.setColor(0.3, 0.7, 0.3)
-            love.graphics.print(#partyHeroes .. " hero" .. (#partyHeroes > 1 and "es" or ""), pentagonX - 35, pentagonY + pentagonRadius + 24)
+            love.graphics.print(heroCountText, pentagonX - heroCountWidth / 2, pentagonY + pentagonRadius + 38)
 
-            -- Legend
+            -- Legend (centered below)
+            local legendY = pentagonY + pentagonRadius + 56
             love.graphics.setColor(0.3, 0.7, 0.3)
-            love.graphics.rectangle("fill", pentagonX - 40, pentagonY + pentagonRadius + 42, 10, 10)
+            love.graphics.rectangle("fill", pentagonX - 45, legendY, 10, 10)
             love.graphics.setColor(Components.colors.textDim)
-            love.graphics.print("Party", pentagonX - 25, pentagonY + pentagonRadius + 40)
+            love.graphics.print("Party", pentagonX - 32, legendY - 2)
 
             love.graphics.setColor(1, 1, 1, 0.7)
-            love.graphics.rectangle("line", pentagonX + 20, pentagonY + pentagonRadius + 42, 10, 10)
+            love.graphics.rectangle("line", pentagonX + 10, legendY, 10, 10)
             love.graphics.setColor(Components.colors.textDim)
-            love.graphics.print("Quest", pentagonX + 35, pentagonY + pentagonRadius + 40)
+            love.graphics.print("Quest", pentagonX + 24, legendY - 2)
         end
 
         -- Success chance (color coded, includes equipment bonuses)
