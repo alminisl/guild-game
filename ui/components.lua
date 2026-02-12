@@ -3,6 +3,107 @@
 
 local Components = {}
 
+-- Load design system
+local DesignSystem = require("ui.design_system")
+
+-- Load UI assets (Tiny Swords UI Elements)
+local UIAssets = require("ui.ui_assets")
+
+-- ============================================================================
+-- ICON SYSTEM
+-- ============================================================================
+Components.icons = {
+    -- Stats
+    sword = "⚔️",       -- STR
+    bow = "🏹",         -- DEX
+    wand = "🔮",        -- INT
+    heart = "❤️",       -- VIT / Health
+    clover = "🍀",      -- LUCK
+    shield = "🛡️",      -- Defense
+    
+    -- Status
+    check = "✓",
+    checkmark = "✔️",
+    cross = "✗",
+    xmark = "✕",
+    clock = "⏱️",
+    hourglass = "⌛",
+    skull = "💀",
+    star = "⭐",
+    stars = "✨",
+    crown = "👑",
+    
+    -- Resources
+    gold = "💰",
+    coin = "🪙",
+    xp = "⭐",
+    material = "📦",
+    potion = "🧪",
+    gem = "💎",
+    
+    -- Quest Types
+    sword_quest = "🗡️",
+    dragon = "🐉",
+    monster = "👹",
+    dungeon = "🏰",
+    treasure = "💰",
+    
+    -- UI Elements
+    close = "✕",
+    info = "ℹ️",
+    warning = "⚠️",
+    danger = "❗",
+    question = "❓",
+    menu = "☰",
+    arrow_right = "→",
+    arrow_left = "←",
+    arrow_up = "↑",
+    arrow_down = "↓",
+    
+    -- Party/Social
+    party = "🎭",
+    people = "👥",
+    person = "👤",
+    
+    -- Status Effects
+    fire = "🔥",
+    lightning = "⚡",
+    ice = "❄️",
+    poison = "☠️",
+    
+    -- Misc
+    lock = "🔒",
+    unlock = "🔓",
+    bonding = "🔄",
+    succession = "🎖️"
+}
+
+-- Draw an icon with optional size and color
+function Components.drawIcon(icon, x, y, options)
+    options = options or {}
+    local size = options.size or 14
+    local color = options.color or {1, 1, 1, 1}
+    
+    love.graphics.setColor(color)
+    
+    -- Save current font
+    local currentFont = love.graphics.getFont()
+    
+    -- Use slightly larger font for emojis to make them more visible
+    local iconFont = love.graphics.newFont(size)
+    love.graphics.setFont(iconFont)
+    
+    love.graphics.print(icon, x, y)
+    
+    -- Restore font
+    love.graphics.setFont(currentFont)
+end
+
+-- Get icon by name (helper function)
+function Components.getIcon(name)
+    return Components.icons[name] or "?"
+end
+
 -- Color definitions
 Components.colors = {
     -- Base colors
@@ -75,7 +176,7 @@ function Components.isPointInRect(px, py, rx, ry, rw, rh)
     return px >= rx and px <= rx + rw and py >= ry and py <= ry + rh
 end
 
--- Draw a button and return if it was clicked
+-- Draw a button (LEGACY - kept for compatibility)
 function Components.drawButton(text, x, y, w, h, options)
     options = options or {}
     local disabled = options.disabled or false
@@ -114,6 +215,132 @@ function Components.drawButton(text, x, y, w, h, options)
     end
     love.graphics.printf(text, x, y + h/2 - 7, w, "center")
 
+    return not disabled
+end
+
+-- Draw a modern button with shadows and rounded corners
+function Components.drawModernButton(text, x, y, w, h, options)
+    options = options or {}
+    local hovered = options.hovered or false
+    local disabled = options.disabled or false
+    local variant = options.variant or "default"  -- "default", "primary", "danger", "success"
+    local icon = options.icon  -- Optional icon (from Components.icons)
+    
+    -- Determine colors based on state and variant
+    local bgColor, textColor
+    
+    if disabled then
+        bgColor = DesignSystem.colors.surface.disabled
+        textColor = DesignSystem.colors.text.disabled
+    else
+        -- Choose color based on variant
+        if variant == "primary" then
+            bgColor = hovered and DesignSystem.colors.primary.hover 
+                                or DesignSystem.colors.primary.default
+            textColor = {1, 1, 1, 1}
+        elseif variant == "danger" then
+            bgColor = hovered and DesignSystem.darken(DesignSystem.colors.semantic.danger, 0.1)
+                                or DesignSystem.colors.semantic.danger
+            textColor = {1, 1, 1, 1}
+        elseif variant == "success" then
+            bgColor = hovered and DesignSystem.darken(DesignSystem.colors.semantic.success, 0.1)
+                                or DesignSystem.colors.semantic.success
+            textColor = {1, 1, 1, 1}
+        else
+            -- Default surface color
+            bgColor = hovered and DesignSystem.colors.surface.hover 
+                                or DesignSystem.colors.surface.default
+            textColor = DesignSystem.colors.text.primary
+        end
+    end
+    
+    local radius = DesignSystem.radius.md
+    
+    -- Draw shadow (only if not disabled)
+    if not disabled then
+        love.graphics.setColor(0, 0, 0, DesignSystem.shadows.sm)
+        love.graphics.rectangle("fill", x + 2, y + 2, w, h, radius, radius)
+    end
+    
+    -- Draw button background
+    love.graphics.setColor(bgColor)
+    love.graphics.rectangle("fill", x, y, w, h, radius, radius)
+    
+    -- Draw subtle border
+    if hovered and not disabled then
+        love.graphics.setColor(DesignSystem.colors.border.hover)
+    else
+        love.graphics.setColor(DesignSystem.colors.border.default)
+    end
+    love.graphics.setLineWidth(1)
+    love.graphics.rectangle("line", x, y, w, h, radius, radius)
+    
+    -- Draw text (centered)
+    love.graphics.setColor(textColor)
+    local font = love.graphics.getFont()
+    local textWidth = font:getWidth(text)
+    local textHeight = font:getHeight()
+    
+    -- If icon provided, draw it before text
+    if icon and not disabled then
+        local iconX = x + (w - textWidth) / 2 - 20
+        local iconY = y + (h - textHeight) / 2
+        Components.drawIcon(icon, iconX, iconY, {color = textColor, size = 14})
+        love.graphics.print(text, x + (w - textWidth) / 2 + 10, y + (h - textHeight) / 2)
+    else
+        love.graphics.print(text, x + (w - textWidth) / 2, y + (h - textHeight) / 2)
+    end
+    
+    return not disabled
+end
+
+-- Draw a button with optional sprite support (BEST OF BOTH WORLDS)
+function Components.drawStyledButton(text, x, y, w, h, options)
+    options = options or {}
+    local hovered = options.hovered or false
+    local pressed = options.pressed or false
+    local disabled = options.disabled or false
+    local variant = options.variant or "default"  -- "default", "primary", "danger", "success"
+    local useSprite = options.useSprite or false  -- Use UI asset sprites
+    local icon = options.icon
+    
+    if useSprite then
+        -- Use sprite-based rendering
+        local buttonType
+        if variant == "danger" or variant == "red" then
+            if w > 200 then
+                buttonType = "bigRed"
+            elseif w > 100 then
+                buttonType = "smallRedSquare"
+            else
+                buttonType = "tinySquareRed"
+            end
+        else
+            -- Default to blue
+            if w > 200 then
+                buttonType = "bigBlue"
+            elseif w > 100 then
+                buttonType = "smallBlueSquare"
+            else
+                buttonType = "tinySquareBlue"
+            end
+        end
+        
+        UIAssets.drawButton(buttonType, x, y, w, h, {
+            pressed = pressed,
+            disabled = disabled,
+            text = text
+        })
+    else
+        -- Use modern programmatic rendering
+        Components.drawModernButton(text, x, y, w, h, {
+            hovered = hovered,
+            disabled = disabled,
+            variant = variant,
+            icon = icon
+        })
+    end
+    
     return not disabled
 end
 
@@ -178,6 +405,158 @@ function Components.drawProgressBar(x, y, w, h, progress, options)
     if text then
         love.graphics.setColor(Components.colors.text)
         love.graphics.printf(text, x, y + h/2 - 7, w, "center")
+    end
+end
+
+-- Draw a modern progress bar with better visuals
+function Components.drawModernProgressBar(current, max, x, y, w, h, options)
+    options = options or {}
+    local color = options.color or DesignSystem.colors.primary.default
+    local showText = options.showText ~= false
+    local label = options.label
+    
+    -- Background
+    love.graphics.setColor(DesignSystem.colors.bg.light)
+    love.graphics.rectangle("fill", x, y, w, h, DesignSystem.radius.sm, DesignSystem.radius.sm)
+    
+    -- Fill
+    local progress = math.min(current / max, 1)
+    local fillWidth = progress * w
+    love.graphics.setColor(color)
+    love.graphics.rectangle("fill", x, y, fillWidth, h, DesignSystem.radius.sm, DesignSystem.radius.sm)
+    
+    -- Text overlay
+    if showText then
+        love.graphics.setColor(DesignSystem.colors.text.primary)
+        local text = label or string.format("%d/%d", current, max)
+        local font = love.graphics.getFont()
+        local textWidth = font:getWidth(text)
+        love.graphics.print(text, x + (w - textWidth) / 2, y + (h - font:getHeight()) / 2)
+    end
+end
+
+-- Draw a modern card with shadow
+function Components.drawModernCard(x, y, w, h, options)
+    options = options or {}
+    local hovered = options.hovered or false
+    local selected = options.selected or false
+    local variant = options.variant or "default"  -- "default", "primary", "success", "danger"
+    
+    -- Determine colors
+    local bgColor
+    if variant == "primary" then
+        bgColor = DesignSystem.alpha(DesignSystem.colors.primary.default, 0.1)
+    elseif variant == "success" then
+        bgColor = DesignSystem.alpha(DesignSystem.colors.semantic.success, 0.1)
+    elseif variant == "danger" then
+        bgColor = DesignSystem.alpha(DesignSystem.colors.semantic.danger, 0.1)
+    else
+        bgColor = hovered and DesignSystem.colors.surface.hover 
+                            or DesignSystem.colors.surface.default
+    end
+    
+    local radius = DesignSystem.radius.lg
+    
+    -- Draw shadow
+    love.graphics.setColor(0, 0, 0, DesignSystem.shadows.md)
+    love.graphics.rectangle("fill", x + 3, y + 3, w, h, radius, radius)
+    
+    -- Draw card background
+    love.graphics.setColor(bgColor)
+    love.graphics.rectangle("fill", x, y, w, h, radius, radius)
+    
+    -- Draw border
+    if selected then
+        love.graphics.setColor(DesignSystem.colors.primary.default)
+        love.graphics.setLineWidth(2)
+        love.graphics.rectangle("line", x, y, w, h, radius, radius)
+        love.graphics.setLineWidth(1)
+    else
+        love.graphics.setColor(DesignSystem.colors.border.default)
+        love.graphics.setLineWidth(1)
+        love.graphics.rectangle("line", x, y, w, h, radius, radius)
+    end
+end
+
+-- Draw a badge/chip component
+function Components.drawBadge(text, x, y, options)
+    options = options or {}
+    local color = options.color or DesignSystem.colors.primary.default
+    local variant = options.variant or "filled"  -- "filled" or "outlined"
+    
+    local font = love.graphics.getFont()
+    local textWidth = font:getWidth(text)
+    local padding = DesignSystem.spacing.sm
+    local w = textWidth + padding * 2
+    local h = 20
+    
+    if variant == "filled" then
+        -- Filled background
+        love.graphics.setColor(color[1], color[2], color[3], 0.2)
+        love.graphics.rectangle("fill", x, y, w, h, DesignSystem.radius.full, DesignSystem.radius.full)
+        
+        -- Border
+        love.graphics.setColor(color)
+        love.graphics.setLineWidth(1)
+        love.graphics.rectangle("line", x, y, w, h, DesignSystem.radius.full, DesignSystem.radius.full)
+        
+        -- Text
+        love.graphics.print(text, x + padding, y + 2)
+    else
+        -- Outlined only
+        love.graphics.setColor(color)
+        love.graphics.setLineWidth(1)
+        love.graphics.rectangle("line", x, y, w, h, DesignSystem.radius.full, DesignSystem.radius.full)
+        love.graphics.print(text, x + padding, y + 2)
+    end
+    
+    return w  -- Return width for positioning next badge
+end
+
+-- Draw horizontal stat bar with icon
+function Components.drawModernStatBar(icon, label, value, max, x, y, w, options)
+    options = options or {}
+    local color = options.color or DesignSystem.colors.primary.default
+    local barHeight = 16
+    local iconSize = 14
+    local labelWidth = 40
+    local valueWidth = 35
+    
+    -- Icon
+    if icon then
+        Components.drawIcon(icon, x, y + 1, {color = color, size = iconSize})
+        x = x + iconSize + DesignSystem.spacing.xs
+        w = w - iconSize - DesignSystem.spacing.xs
+    end
+    
+    -- Label
+    love.graphics.setColor(DesignSystem.colors.text.secondary)
+    love.graphics.print(label, x, y + 1)
+    
+    -- Bar
+    local barX = x + labelWidth
+    local barW = w - labelWidth - valueWidth - DesignSystem.spacing.sm
+    local progress = math.min(value / max, 1)
+    
+    -- Background
+    love.graphics.setColor(DesignSystem.colors.bg.light)
+    love.graphics.rectangle("fill", barX, y, barW, barHeight, DesignSystem.radius.sm, DesignSystem.radius.sm)
+    
+    -- Fill
+    love.graphics.setColor(color)
+    love.graphics.rectangle("fill", barX, y, barW * progress, barHeight, DesignSystem.radius.sm, DesignSystem.radius.sm)
+    
+    -- Value text
+    love.graphics.setColor(DesignSystem.colors.text.primary)
+    local valueText = string.format("%d", value)
+    love.graphics.print(valueText, barX + barW + DesignSystem.spacing.sm, y + 1)
+    
+    -- Percentage (optional)
+    if options.showPercent then
+        local percentText = string.format("%.0f%%", progress * 100)
+        love.graphics.setColor(DesignSystem.colors.text.secondary)
+        local font = love.graphics.getFont()
+        love.graphics.print(percentText, barX + (barW - font:getWidth(percentText)) / 2, y + 1)
     end
 end
 

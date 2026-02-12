@@ -4,6 +4,7 @@
 local Components = require("ui.components")
 local SpriteSystem = require("systems.sprite_system")
 local PartySystem = require("systems.party_system")
+local UIAssets = require("ui.ui_assets")
 
 local GuildMenu = {}
 
@@ -40,6 +41,7 @@ local TABS = {
     {id = "roster", label = "Roster"},
     {id = "quests", label = "Quests"},
     {id = "active", label = "Active"},
+    {id = "parties", label = "Parties"},  -- NEW: Party management tab
     {id = "reputation", label = "Rep"}
 }
 
@@ -61,6 +63,14 @@ local rosterListBounds = nil  -- Bounds for roster scroll area
 local expandedParties = {}  -- Table of party IDs that are expanded (true = expanded)
 local lastHeroClickTime = 0  -- For double-click detection
 local lastHeroClickId = nil  -- Which hero was last clicked
+
+-- NEW: Party creation state
+local partyCreationActive = false  -- Is the party creation modal open?
+local selectedHeroesForParty = {}  -- Table of hero IDs selected for new party
+local partyCreationName = ""  -- Custom party name (or empty for auto-generate)
+local partyScrollOffset = 0  -- Scroll offset for parties tab
+local selectedPartyDetail = nil  -- Party ID for detail view
+local partyToDisband = nil  -- Party ID pending disband confirmation
 
 -- Tooltip/hover state
 local mouseX, mouseY = 0, 0
@@ -100,6 +110,14 @@ function GuildMenu.resetState()
     rosterScrollOffset = 0
     rosterListBounds = nil
     expandedParties = {}
+    
+    -- NEW: Reset party creation state
+    partyCreationActive = false
+    selectedHeroesForParty = {}
+    partyCreationName = ""
+    partyScrollOffset = 0
+    selectedPartyDetail = nil
+    partyToDisband = nil
 end
 
 -- Handle mouse wheel scroll for hero list
@@ -224,8 +242,12 @@ function GuildMenu.draw(gameData, QuestSystem, Quests, Heroes, TimeSystem, Guild
     love.graphics.translate(MENU.x, MENU.y)
     love.graphics.scale(currentScale, currentScale)
 
-    -- Background panel (design coordinates)
-    Components.drawPanel(0, 0, MENU_DESIGN_WIDTH, MENU_DESIGN_HEIGHT)
+    -- Background panel with paper texture (design coordinates)
+    UIAssets.drawPaper(0, 0, MENU_DESIGN_WIDTH, MENU_DESIGN_HEIGHT, {
+        special = false,
+        color = {0.95, 0.92, 0.88, 1},  -- Slight warm tint
+        alpha = 0.95
+    })
 
     -- Title
     love.graphics.setColor(Components.colors.text)
@@ -259,6 +281,9 @@ function GuildMenu.draw(gameData, QuestSystem, Quests, Heroes, TimeSystem, Guild
         drawQuestsTab(gameData, contentY, contentHeight, QuestSystem, Quests, TimeSystem, GuildSystem)
     elseif currentTab == "active" then
         drawActiveTab(gameData, contentY, contentHeight, QuestSystem, Quests, TimeSystem)
+    elseif currentTab == "parties" then
+        -- NEW: Parties tab
+        drawPartiesTab(gameData, contentY, contentHeight, Heroes, TimeSystem)
     elseif currentTab == "reputation" then
         drawReputationTab(gameData, contentY, contentHeight, GuildSystem)
     end
@@ -1395,12 +1420,20 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
 
             local isSelected = selectedQuest and selectedQuest.id == quest.id
 
-            -- Quest card
-            local bgColor = isSelected and {0.3, 0.4, 0.5} or Components.colors.panelLight
-            Components.drawPanel(20, y, questListWidth - 10, 65, {
-                color = bgColor,
-                cornerRadius = 5
-            })
+            -- Quest card with paper texture
+            if isSelected then
+                UIAssets.drawPaper(20, y, questListWidth - 10, 65, {
+                    special = false,
+                    color = {0.8, 0.9, 0.95, 1},  -- Light blue tint for selected
+                    alpha = 0.9
+                })
+            else
+                UIAssets.drawPaper(20, y, questListWidth - 10, 65, {
+                    special = false,
+                    color = {0.98, 0.96, 0.92, 1},  -- Warm paper color
+                    alpha = 0.85
+                })
+            end
 
             -- Rank badge
             Components.drawRankBadge(quest.rank, 30, y + 18, 28)
@@ -1500,12 +1533,12 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
             end
         end
 
-        -- Show hero count with limit
+        -- Compact header: hero count + stats on same line
         local maxHeroes = selectedQuest.maxHeroes or 6
         local heroCountColor = #partyHeroes >= maxHeroes and Components.colors.warning or Components.colors.textDim
         love.graphics.setColor(heroCountColor)
-        love.graphics.print(string.format("Heroes: %d/%d", #partyHeroes, maxHeroes), partyX, startY + 18)
-
+        love.graphics.print(string.format("%d/%d", #partyHeroes, maxHeroes), partyX, startY + 18)
+        
         -- Party stat totals for required stats (primary + secondary)
         local reqStat = selectedQuest.requiredStat or "str"
         local statNames = {str = "STR", dex = "DEX", int = "INT", vit = "VIT", luck = "LCK"}
@@ -1525,15 +1558,15 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
             end
         end
 
-        -- Display stats inline (compact format)
-        local statDisplayX = partyX
-        local statDisplayY = startY + 34
+        -- Display stats inline next to hero count (more compact)
+        local statDisplayX = partyX + 40
+        local statDisplayY = startY + 18
         love.graphics.setColor(Components.colors.textDim)
-        love.graphics.print("Stats:", statDisplayX, statDisplayY)
+        love.graphics.print("│", statDisplayX - 5, statDisplayY)
 
-        local xOffset = 45
+        local xOffset = 0
         for i, statInfo in ipairs(allReqStats) do
-            if i > 3 then break end  -- Limit to 3 stats displayed
+            if i > 2 then break end  -- Limit to 2 stats displayed for compactness
 
             local stat = statInfo.stat
             local totalStat = 0
@@ -1545,24 +1578,17 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
                 end
             end
 
-            -- Primary stat shown in full, secondary stats show weight indicator
+            -- Compact stat display
             local label = statNames[stat] or "?"
-            if statInfo.weight < 1 then
-                -- Secondary stat - show with weight indicator
-                love.graphics.setColor(statColors[stat] or Components.colors.textDim)
-                love.graphics.print(label .. ":" .. totalStat, statDisplayX + xOffset, statDisplayY)
-            else
-                -- Primary stat
-                love.graphics.setColor(statColors[stat] or Components.colors.textDim)
-                love.graphics.print(label .. ":" .. totalStat, statDisplayX + xOffset, statDisplayY)
-            end
+            love.graphics.setColor(statColors[stat] or Components.colors.textDim)
+            love.graphics.print(label .. ":" .. totalStat, statDisplayX + xOffset, statDisplayY)
 
             if totalEquip > 0 then
                 love.graphics.setColor(Components.colors.success)
-                love.graphics.print("+" .. totalEquip, statDisplayX + xOffset + 50, statDisplayY)
+                love.graphics.print("+" .. totalEquip, statDisplayX + xOffset + 46, statDisplayY)
                 xOffset = xOffset + 70
             else
-                xOffset = xOffset + 55
+                xOffset = xOffset + 50
             end
         end
 
@@ -1627,10 +1653,10 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
             love.graphics.print("Quest", pentagonX + 24, legendY - 2)
         end
 
-        -- Success chance (color coded, includes equipment bonuses)
-        local successY = startY + 68
+        -- Success chance (color coded, includes equipment bonuses and party trait bonuses)
+        local successY = startY + 36
         if #partyHeroes > 0 then
-            local chance = Quests.calculateSuccessChance(selectedQuest, partyHeroes, _EquipmentSystem)
+            local chance = Quests.calculateSuccessChance(selectedQuest, partyHeroes, _EquipmentSystem, gameData)
             local chancePercent = chance * 100
 
             -- Color based on chance: red < 40%, yellow 40-70%, green > 70%
@@ -1647,11 +1673,11 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
             love.graphics.print(string.format("Success: %.0f%%", chancePercent), partyX, successY)
         else
             love.graphics.setColor(Components.colors.textDim)
-            love.graphics.print("Select heroes to see success chance", partyX, successY)
+            love.graphics.print("Select heroes...", partyX, successY)
         end
 
-        -- Active synergies display with hover tooltips
-        local synergyY = successY + 18
+        -- Active synergies display with hover tooltips (more compact)
+        local synergyY = successY + 16
         hoveredSynergy = nil  -- Reset hover state each frame
         synergyHelpHovered = false
 
@@ -1790,11 +1816,20 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
                     if y + heroCardHeight >= listStartY and y < listStartY + listHeight then
                         local isSelected = selectedHeroes[hero.id] == true
 
-                        local bgColor = isSelected and {0.3, 0.5, 0.3} or Components.colors.panelLight
-                        Components.drawPanel(partyX, y, partyWidth - scrollbarWidth - 5, heroCardHeight, {
-                            color = bgColor,
-                            cornerRadius = 5
-                        })
+                        -- Hero card with paper texture
+                        if isSelected then
+                            UIAssets.drawPaper(partyX, y, partyWidth - scrollbarWidth - 5, heroCardHeight, {
+                                special = false,
+                                color = {0.7, 0.95, 0.75, 1},  -- Light green for selected
+                                alpha = 0.9
+                            })
+                        else
+                            UIAssets.drawPaper(partyX, y, partyWidth - scrollbarWidth - 5, heroCardHeight, {
+                                special = false,
+                                color = {0.96, 0.94, 0.90, 1},
+                                alpha = 0.85
+                            })
+                        end
 
                         -- Larger sprite portrait (120x120 for better visibility)
                         SpriteSystem.drawCentered(hero, partyX + 40, y + heroCardHeight / 2, 140, 140, "Idle")
@@ -1916,11 +1951,20 @@ function drawQuestsTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
                         local members = partyData.members
                         local isSelected = selectedPartyId == party.id
 
-                        local bgColor = isSelected and {0.3, 0.5, 0.3} or Components.colors.panelLight
-                        Components.drawPanel(partyX, y, partyWidth - scrollbarWidth - 5, partyCardHeight, {
-                            color = bgColor,
-                            cornerRadius = 5
-                        })
+                        -- Party card with paper texture
+                        if isSelected then
+                            UIAssets.drawPaper(partyX, y, partyWidth - scrollbarWidth - 5, partyCardHeight, {
+                                special = false,
+                                color = {0.7, 0.95, 0.75, 1},  -- Light green for selected
+                                alpha = 0.9
+                            })
+                        else
+                            UIAssets.drawPaper(partyX, y, partyWidth - scrollbarWidth - 5, partyCardHeight, {
+                                special = false,
+                                color = {0.96, 0.94, 0.90, 1},
+                                alpha = 0.85
+                            })
+                        end
 
                         -- Party name
                         love.graphics.setColor(Components.colors.synergy)
@@ -2026,12 +2070,52 @@ function drawActiveTab(gameData, startY, height, QuestSystem, Quests, TimeSystem
         local phase = quest.currentPhase or "travel"
         local phaseColors = {
             travel = {0.5, 0.7, 0.9},
+            awaiting_execute = {0.9, 0.7, 0.2},
             execute = {0.9, 0.6, 0.3},
+            awaiting_return = {0.3, 0.8, 0.5},
             awaiting_claim = {0.3, 0.9, 0.3},
             ["return"] = {0.6, 0.9, 0.6}
         }
 
-        if phase == "awaiting_claim" then
+        if phase == "awaiting_execute" then
+            -- Heroes arrived - show Execute Quest button
+            love.graphics.setColor(phaseColors[phase])
+            love.graphics.print("HEROES ARRIVED!", 70, y + 30)
+
+            -- Execute Quest button
+            local execBtnX = 200
+            local execBtnY = y + 25
+            local execBtnW = 130
+            local execBtnH = 28
+
+            -- Store button position for click detection
+            quest._execBtnPos = {x = execBtnX, y = execBtnY, w = execBtnW, h = execBtnH}
+
+            Components.drawButton("EXECUTE QUEST", execBtnX, execBtnY, execBtnW, execBtnH, {
+                bgColor = {0.8, 0.5, 0.2},
+                hoverColor = {0.9, 0.6, 0.3}
+            })
+
+        elseif phase == "awaiting_return" then
+            -- Quest executed, waiting for player to start return
+            love.graphics.setColor(phaseColors[phase])
+            love.graphics.print("READY TO RETURN", 70, y + 30)
+
+            -- Return button
+            local returnBtnX = 200
+            local returnBtnY = y + 25
+            local returnBtnW = 100
+            local returnBtnH = 28
+
+            -- Store button position for click detection
+            quest._returnBtnPos = {x = returnBtnX, y = returnBtnY, w = returnBtnW, h = returnBtnH}
+
+            Components.drawButton("RETURN", returnBtnX, returnBtnY, returnBtnW, returnBtnH, {
+                bgColor = {0.3, 0.6, 0.4},
+                hoverColor = {0.4, 0.7, 0.5}
+            })
+
+        elseif phase == "awaiting_claim" then
             -- Quest complete - show claim button instead of progress
             love.graphics.setColor(phaseColors[phase])
             love.graphics.print("QUEST COMPLETE!", 70, y + 30)
@@ -2261,6 +2345,444 @@ function drawReputationTab(gameData, startY, height, GuildSystem)
     love.graphics.setColor(Components.colors.textDim)
     love.graphics.printf("Complete quests to gain reputation. Rival factions lose rep when you favor their enemies.",
         20, y + 10, cardWidth, "center")
+end
+
+-- ============================================================================
+-- PARTIES TAB
+-- ============================================================================
+
+function drawPartiesTab(gameData, startY, height, Heroes, TimeSystem)
+    -- Load design system and UI assets
+    local DesignSystem = require("ui.design_system")
+    local UIAssets = require("ui.ui_assets")
+    
+    -- Header with create button
+    love.graphics.setColor(DesignSystem.colors.text.primary)
+    love.graphics.print("Active Parties (" .. #(gameData.parties or {}) .. "/4)", 20, startY)
+    
+    -- Create Party button (top right)
+    local createBtnX = MENU_DESIGN_WIDTH - 180
+    local createBtnY = startY - 5
+    local createBtnW = 160
+    local createBtnH = 32
+    
+    -- Check if can create more parties
+    local canCreateParty = #(gameData.parties or {}) < 4
+    
+    UIAssets.drawButton("bigBlue", createBtnX, createBtnY, createBtnW, createBtnH, {
+        text = "+ Create Party",
+        disabled = not canCreateParty,
+        color = canCreateParty and {1, 1, 1, 1} or {0.5, 0.5, 0.5, 0.7}
+    })
+    
+    -- Scroll area for parties
+    local scrollY = startY + 40
+    local scrollHeight = height - 50
+    local cardHeight = 180
+    local cardSpacing = 12
+    
+    gameData.parties = gameData.parties or {}
+    
+    if #gameData.parties == 0 then
+        -- No parties yet
+        love.graphics.setColor(DesignSystem.colors.text.secondary)
+        love.graphics.printf("No parties formed yet. Create your first party to unlock bonuses!",
+            40, startY + height / 2 - 40, MENU_DESIGN_WIDTH - 80, "center")
+        
+        love.graphics.setColor(DesignSystem.colors.text.disabled)
+        love.graphics.printf("Parties gain experience and bonuses as they quest together.",
+            40, startY + height / 2, MENU_DESIGN_WIDTH - 80, "center")
+    else
+        -- Draw party cards
+        local y = scrollY - partyScrollOffset
+        
+        for i, party in ipairs(gameData.parties) do
+            if y + cardHeight > scrollY and y < scrollY + scrollHeight then
+                drawPartyCard(party, 20, y, MENU_DESIGN_WIDTH - 40, cardHeight, gameData, Heroes)
+            end
+            y = y + cardHeight + cardSpacing
+        end
+    end
+    
+    -- Party creation modal
+    if partyCreationActive then
+        drawPartyCreationModal(gameData, Heroes)
+    end
+    
+    -- Party detail modal
+    if selectedPartyDetail then
+        local party = PartySystem.getParty(selectedPartyDetail, gameData)
+        if party then
+            drawPartyDetailModal(party, gameData, Heroes)
+        end
+    end
+    
+    -- Disband confirmation modal
+    if partyToDisband then
+        drawDisbandConfirmationModal(partyToDisband, gameData)
+    end
+end
+
+-- Draw a single party card
+function drawPartyCard(party, x, y, w, h, gameData, Heroes)
+    local DesignSystem = require("ui.design_system")
+    local UIAssets = require("ui.ui_assets")
+    
+    -- Get party tier
+    local tier, tierIndex = PartySystem.getTier(party)
+    local progress = PartySystem.getProgressToNextTier(party)
+    local bonuses = PartySystem.getTierBonuses(party)
+    
+    -- Card background with special paper texture for formed parties
+    UIAssets.drawPaper(x, y, w, h, {
+        special = true,  -- Use special paper for formed parties
+        color = {1, 1, 1, 1},
+        alpha = 0.95
+    })
+    
+    -- Tier badge (top left)
+    local badgeX = x + 12
+    local badgeY = y + 12
+    love.graphics.setColor(tier.color)
+    love.graphics.rectangle("fill", badgeX, badgeY, 80, 24, 4, 4)
+    love.graphics.setColor(1, 1, 1, 1)
+    
+    -- Stars for tier
+    local starText = string.rep("⭐", tier.stars)
+    if tier.icon then
+        starText = tier.icon .. " " .. starText
+    end
+    love.graphics.print(starText .. " " .. tier.name, badgeX + 4, badgeY + 4)
+    
+    -- Party name (header)
+    love.graphics.setColor(DesignSystem.colors.text.primary)
+    local font = love.graphics.getFont()
+    local nameY = y + 12
+    love.graphics.print(party.name, badgeX + 90, nameY)
+    
+    -- Quest count
+    love.graphics.setColor(DesignSystem.colors.text.secondary)
+    love.graphics.print(party.totalQuestsCompleted .. " quests", badgeX + 90, nameY + 18)
+    
+    -- Member avatars (4 slots)
+    local memberY = y + 50
+    local memberSpacing = (w - 40) / 4
+    
+    for i = 1, 4 do
+        local memberX = x + 20 + (i - 1) * memberSpacing
+        local heroId = party.memberIds[i]
+        
+        if heroId then
+            -- Find hero
+            local hero = nil
+            for _, h in ipairs(gameData.heroes) do
+                if h.id == heroId then
+                    hero = h
+                    break
+                end
+            end
+            
+            if hero then
+                -- Hero portrait background
+                love.graphics.setColor(DesignSystem.colors.surface.active)
+                love.graphics.rectangle("fill", memberX, memberY, 60, 70, 6, 6)
+                
+                -- Hero info
+                love.graphics.setColor(DesignSystem.colors.text.primary)
+                love.graphics.print(hero.name:sub(1, 8), memberX + 2, memberY + 2)
+                
+                love.graphics.setColor(DesignSystem.colors.text.secondary)
+                love.graphics.print(hero.class, memberX + 2, memberY + 16)
+                
+                -- Rank badge
+                local rankColor = Components.getRankColor(hero.rank)
+                love.graphics.setColor(rankColor)
+                love.graphics.print("[" .. hero.rank .. "]", memberX + 2, memberY + 30)
+                
+                -- Level
+                love.graphics.setColor(DesignSystem.colors.text.secondary)
+                love.graphics.print("Lv." .. hero.level, memberX + 2, memberY + 44)
+                
+                -- Status icon
+                local statusColor = DesignSystem.getStatusColor(hero.status or "idle")
+                love.graphics.setColor(statusColor)
+                love.graphics.circle("fill", memberX + 52, memberY + 8, 4)
+                
+                -- Bonding indicator
+                if party.bondingMembers and party.bondingMembers[heroId] then
+                    local bonding = party.bondingMembers[heroId]
+                    love.graphics.setColor(DesignSystem.colors.semantic.warning)
+                    love.graphics.print("🔄", memberX + 40, memberY + 56)
+                end
+            end
+        else
+            -- Empty slot
+            love.graphics.setColor(DesignSystem.colors.surface.default)
+            love.graphics.rectangle("fill", memberX, memberY, 60, 70, 6, 6)
+            love.graphics.setColor(DesignSystem.colors.text.disabled)
+            love.graphics.printf("Empty", memberX, memberY + 28, 60, "center")
+        end
+    end
+    
+    -- Earned Traits section (if any)
+    local earnedTraits = PartySystem.getPartyTraits(party)
+    if #earnedTraits > 0 then
+        local traitY = y + 130
+        love.graphics.setColor(DesignSystem.colors.text.secondary)
+        love.graphics.print("Traits:", x + 20, traitY)
+        
+        local traitX = x + 80
+        for i, traitInfo in ipairs(earnedTraits) do
+            if i > 3 then break end  -- Max 3 visible on card
+            
+            local trait = traitInfo.trait
+            -- Draw trait icon and name
+            love.graphics.setColor(DesignSystem.colors.semantic.success)
+            love.graphics.print(trait.icon or "★", traitX, traitY)
+            
+            love.graphics.setColor(DesignSystem.colors.text.primary)
+            love.graphics.print(trait.name, traitX + 18, traitY)
+            
+            traitX = traitX + 180
+        end
+        
+        -- Show count if more than 3
+        if #earnedTraits > 3 then
+            love.graphics.setColor(DesignSystem.colors.text.disabled)
+            love.graphics.print("+" .. (#earnedTraits - 3) .. " more", traitX, traitY)
+        end
+    end
+    
+    -- Bonuses section (bottom)
+    local bonusY = y + h - 45
+    love.graphics.setColor(DesignSystem.colors.text.secondary)
+    love.graphics.print("Bonuses:", x + 20, bonusY)
+    
+    local bonusText = ""
+    if bonuses.successBonus > 0 then
+        bonusText = bonusText .. string.format("+%.0f%% Success", bonuses.successBonus * 100)
+    end
+    if bonuses.luckBonus > 0 then
+        bonusText = bonusText .. (bonusText ~= "" and "  |  " or "") .. "+" .. bonuses.luckBonus .. " LUCK"
+    end
+    if bonuses.rerolls > 0 then
+        bonusText = bonusText .. (bonusText ~= "" and "  |  " or "") .. bonuses.rerolls .. " Re-roll(s)"
+    end
+    if bonusText == "" then
+        bonusText = "None (Fresh party)"
+    end
+    
+    love.graphics.setColor(DesignSystem.colors.text.primary)
+    love.graphics.print(bonusText, x + 20, bonusY + 18)
+    
+    -- Progress to next tier (if not max)
+    if tierIndex < #PartySystem.tiers then
+        local nextTier = PartySystem.tiers[tierIndex + 1]
+        local progressText = string.format("%d / %d quests to %s",
+            party.totalQuestsCompleted, nextTier.minQuests, nextTier.name)
+        
+        Components.drawModernProgressBar(
+            party.totalQuestsCompleted,
+            nextTier.minQuests,
+            x + 20,
+            bonusY - 18,
+            w - 40,
+            12,
+            {
+                color = tier.color,
+                showText = false,
+                label = progressText
+            }
+        )
+        
+        love.graphics.setColor(DesignSystem.colors.text.secondary)
+        love.graphics.print(progressText, x + 22, bonusY - 16)
+    end
+    
+    -- Action buttons (bottom right)
+    local btnY = y + h - 35
+    local btnSpacing = 85
+    
+    -- View Details button
+    UIAssets.drawButton("smallBlueSquare", x + w - 250, btnY, 75, 28, {
+        text = "Details"
+    })
+    
+    -- Manage button
+    UIAssets.drawButton("smallBlueSquare", x + w - 170, btnY, 75, 28, {
+        text = "Manage"
+    })
+    
+    -- Disband button
+    UIAssets.drawButton("smallRedSquare", x + w - 90, btnY, 75, 28, {
+        text = "Disband"
+    })
+end
+
+-- Draw party creation modal
+function drawPartyCreationModal(gameData, Heroes)
+    local DesignSystem = require("ui.design_system")
+    local UIAssets = require("ui.ui_assets")
+    
+    -- Modal backdrop
+    love.graphics.setColor(DesignSystem.colors.overlay.dark)
+    love.graphics.rectangle("fill", 0, 0, MENU_DESIGN_WIDTH, MENU_DESIGN_HEIGHT)
+    
+    -- Modal panel
+    local modalW = 800
+    local modalH = 500
+    local modalX = (MENU_DESIGN_WIDTH - modalW) / 2
+    local modalY = (MENU_DESIGN_HEIGHT - modalH) / 2
+    
+    -- Use paper background for medieval feel
+    UIAssets.drawPaper(modalX, modalY, modalW, modalH, {special = true})
+    
+    -- Header with banner
+    UIAssets.drawBanner(modalX + 200, modalY - 20, 400, 80, {
+        text = "CREATE NEW PARTY"
+    })
+    
+    -- Content area
+    local contentY = modalY + 70
+    
+    -- Instructions
+    love.graphics.setColor(DesignSystem.colors.text.primary)
+    love.graphics.printf("Select 4 heroes with different classes:", modalX + 20, contentY, modalW - 40, "center")
+    
+    -- Hero selection grid
+    local gridY = contentY + 30
+    local gridCols = 4
+    local gridSpacing = 10
+    local cardW = (modalW - 40 - (gridCols - 1) * gridSpacing) / gridCols
+    local cardH = 120
+    
+    -- Filter available heroes (idle, not in party)
+    local availableHeroes = {}
+    for _, hero in ipairs(gameData.heroes) do
+        if (hero.status == "idle" or not hero.status) and not hero.partyId then
+            table.insert(availableHeroes, hero)
+        end
+    end
+    
+    -- Draw hero cards
+    local row = 0
+    local col = 0
+    for i, hero in ipairs(availableHeroes) do
+        if i > 12 then break end  -- Max 12 visible
+        
+        local cardX = modalX + 20 + col * (cardW + gridSpacing)
+        local cardY = gridY + row * (cardH + gridSpacing)
+        
+        -- Check if selected
+        local isSelected = false
+        for _, selectedId in ipairs(selectedHeroesForParty) do
+            if selectedId == hero.id then
+                isSelected = true
+                break
+            end
+        end
+        
+        -- Check if class already selected
+        local classDisabled = false
+        if #selectedHeroesForParty > 0 then
+            for _, selectedId in ipairs(selectedHeroesForParty) do
+                for _, h in ipairs(gameData.heroes) do
+                    if h.id == selectedId and h.class == hero.class then
+                        classDisabled = true
+                        break
+                    end
+                end
+            end
+        end
+        
+        -- Card
+        Components.drawModernCard(cardX, cardY, cardW, cardH, {
+            selected = isSelected,
+            hovered = false
+        })
+        
+        if classDisabled then
+            love.graphics.setColor(0.3, 0.3, 0.3, 0.7)
+            love.graphics.rectangle("fill", cardX, cardY, cardW, cardH, 8, 8)
+        end
+        
+        -- Hero info
+        love.graphics.setColor(DesignSystem.colors.text.primary)
+        love.graphics.print(hero.name, cardX + 6, cardY + 6)
+        
+        love.graphics.setColor(DesignSystem.colors.text.secondary)
+        love.graphics.print(hero.class, cardX + 6, cardY + 22)
+        love.graphics.print(hero.race, cardX + 6, cardY + 36)
+        
+        -- Rank badge
+        local rankColor = Components.getRankColor(hero.rank)
+        love.graphics.setColor(rankColor)
+        love.graphics.print("[" .. hero.rank .. "] Lv." .. hero.level, cardX + 6, cardY + 50)
+        
+        -- Stats preview
+        love.graphics.setColor(DesignSystem.colors.text.secondary)
+        love.graphics.print(Components.icons.sword .. hero.stats.str, cardX + 6, cardY + 70)
+        love.graphics.print(Components.icons.bow .. hero.stats.dex, cardX + 50, cardY + 70)
+        love.graphics.print(Components.icons.heart .. hero.stats.vit, cardX + 94, cardY + 70)
+        
+        -- Selection indicator
+        if isSelected then
+            love.graphics.setColor(DesignSystem.colors.primary.default)
+            love.graphics.print("✓", cardX + cardW - 24, cardY + 6)
+        end
+        
+        col = col + 1
+        if col >= gridCols then
+            col = 0
+            row = row + 1
+        end
+    end
+    
+    -- Selected count
+    love.graphics.setColor(DesignSystem.colors.text.primary)
+    love.graphics.printf("Selected: " .. #selectedHeroesForParty .. " / 4", modalX + 20, modalY + modalH - 100, modalW - 40, "center")
+    
+    -- Party name input
+    love.graphics.setColor(DesignSystem.colors.text.secondary)
+    love.graphics.print("Party Name (optional):", modalX + 20, modalY + modalH - 70)
+    
+    -- Name input box
+    love.graphics.setColor(DesignSystem.colors.surface.default)
+    love.graphics.rectangle("fill", modalX + 180, modalY + modalH - 75, 400, 25, 4, 4)
+    love.graphics.setColor(DesignSystem.colors.text.primary)
+    local displayName = partyCreationName ~= "" and partyCreationName or "[Auto-generate]"
+    love.graphics.print(displayName, modalX + 185, modalY + modalH - 72)
+    
+    -- Buttons
+    local btnY = modalY + modalH - 35
+    local canCreate = #selectedHeroesForParty == 4
+    
+    -- Cancel button
+    UIAssets.drawButton("bigRed", modalX + 20, btnY, 150, 30, {
+        text = "Cancel"
+    })
+    
+    -- Random name button
+    UIAssets.drawButton("bigBlue", modalX + 325, btnY, 150, 30, {
+        text = "Random Name"
+    })
+    
+    -- Create button
+    UIAssets.drawButton("bigBlue", modalX + modalW - 170, btnY, 150, 30, {
+        text = "Create Party",
+        disabled = not canCreate,
+        color = canCreate and {0.3, 0.8, 0.3, 1} or {0.5, 0.5, 0.5, 0.7}
+    })
+end
+
+-- Draw party detail modal (stub for now)
+function drawPartyDetailModal(party, gameData, Heroes)
+    -- TODO: Implement detailed party view
+end
+
+-- Draw disband confirmation modal (stub for now)
+function drawDisbandConfirmationModal(partyId, gameData)
+    -- TODO: Implement disband confirmation
 end
 
 -- Handle click in guild menu
@@ -2751,6 +3273,24 @@ function GuildMenu.handleClick(x, y, gameData, QuestSystem, Quests, Heroes, Guil
         for i, quest in ipairs(gameData.activeQuests) do
             if y + 85 > MENU_DESIGN_HEIGHT - 20 then break end
 
+            -- Check for execute button click on awaiting_execute quests
+            if quest.currentPhase == "awaiting_execute" and quest._execBtnPos then
+                local btn = quest._execBtnPos
+                if Components.isPointInRect(designX, designY, btn.x, btn.y, btn.w, btn.h) then
+                    -- Return "execute_quest" action with the quest
+                    return "execute_quest", quest
+                end
+            end
+
+            -- Check for return button click on awaiting_return quests
+            if quest.currentPhase == "awaiting_return" and quest._returnBtnPos then
+                local btn = quest._returnBtnPos
+                if Components.isPointInRect(designX, designY, btn.x, btn.y, btn.w, btn.h) then
+                    -- Return "start_return" action with the quest
+                    return "start_return", quest
+                end
+            end
+
             -- Check for claim button click on awaiting_claim quests
             if quest.currentPhase == "awaiting_claim" and quest._claimBtnPos then
                 local btn = quest._claimBtnPos
@@ -2777,6 +3317,188 @@ function GuildMenu.handleClick(x, y, gameData, QuestSystem, Quests, Heroes, Guil
             end
 
             y = y + 85
+        end
+    end
+
+    -- Parties tab - handle party creation and management
+    if currentTab == "parties" then
+        -- Handle party creation modal
+        if partyCreationActive then
+            local modalW = 800
+            local modalH = 500
+            local modalX = (MENU_DESIGN_WIDTH - modalW) / 2
+            local modalY = (MENU_DESIGN_HEIGHT - modalH) / 2
+            
+            -- Check if clicking outside modal (close it)
+            if not Components.isPointInRect(designX, designY, modalX, modalY, modalW, modalH) then
+                partyCreationActive = false
+                selectedHeroesForParty = {}
+                partyCreationName = ""
+                return nil
+            end
+            
+            -- Cancel button
+            if Components.isPointInRect(designX, designY, modalX + 20, modalY + modalH - 35, 150, 30) then
+                partyCreationActive = false
+                selectedHeroesForParty = {}
+                partyCreationName = ""
+                return nil
+            end
+            
+            -- Random Name button
+            if Components.isPointInRect(designX, designY, modalX + 325, modalY + modalH - 35, 150, 30) then
+                partyCreationName = PartySystem.generateName()
+                return nil
+            end
+            
+            -- Create Party button
+            if Components.isPointInRect(designX, designY, modalX + modalW - 170, modalY + modalH - 35, 150, 30) and #selectedHeroesForParty == 4 then
+                -- Create the party
+                local finalName = partyCreationName ~= "" and partyCreationName or nil
+                local newParty = PartySystem.createParty(selectedHeroesForParty, finalName)
+                newParty.createdDay = gameData.day or 1
+                
+                -- Assign party IDs to heroes
+                for _, heroId in ipairs(selectedHeroesForParty) do
+                    for _, hero in ipairs(gameData.heroes) do
+                        if hero.id == heroId then
+                            hero.partyId = newParty.id
+                            break
+                        end
+                    end
+                end
+                
+                -- Add to parties list
+                gameData.parties = gameData.parties or {}
+                table.insert(gameData.parties, newParty)
+                
+                -- Close modal
+                partyCreationActive = false
+                selectedHeroesForParty = {}
+                partyCreationName = ""
+                
+                return "party_created", "Created party: " .. newParty.name
+            end
+            
+            -- Hero selection in grid
+            local contentY = modalY + 70
+            local gridY = contentY + 60
+            local gridCols = 4
+            local gridSpacing = 10
+            local cardW = (modalW - 40 - (gridCols - 1) * gridSpacing) / gridCols
+            local cardH = 120
+            
+            -- Get available heroes
+            local availableHeroes = {}
+            for _, hero in ipairs(gameData.heroes) do
+                if (hero.status == "idle" or not hero.status) and not hero.partyId then
+                    table.insert(availableHeroes, hero)
+                end
+            end
+            
+            -- Check hero card clicks
+            local row = 0
+            local col = 0
+            for i, hero in ipairs(availableHeroes) do
+                if i > 12 then break end
+                
+                local cardX = modalX + 20 + col * (cardW + gridSpacing)
+                local cardY = gridY + row * (cardH + gridSpacing)
+                
+                -- Check if this class is already selected
+                local classDisabled = false
+                for _, selectedId in ipairs(selectedHeroesForParty) do
+                    for _, h in ipairs(gameData.heroes) do
+                        if h.id == selectedId and h.class == hero.class then
+                            classDisabled = true
+                            break
+                        end
+                    end
+                end
+                
+                if Components.isPointInRect(designX, designY, cardX, cardY, cardW, cardH) and not classDisabled then
+                    -- Toggle selection
+                    local isSelected = false
+                    local selectedIndex = nil
+                    for idx, selectedId in ipairs(selectedHeroesForParty) do
+                        if selectedId == hero.id then
+                            isSelected = true
+                            selectedIndex = idx
+                            break
+                        end
+                    end
+                    
+                    if isSelected then
+                        -- Deselect
+                        table.remove(selectedHeroesForParty, selectedIndex)
+                    else
+                        -- Select (if not at limit)
+                        if #selectedHeroesForParty < 4 then
+                            table.insert(selectedHeroesForParty, hero.id)
+                        end
+                    end
+                    return nil
+                end
+                
+                col = col + 1
+                if col >= gridCols then
+                    col = 0
+                    row = row + 1
+                end
+            end
+            
+            return nil
+        end
+        
+        -- Create Party button (main screen)
+        local contentY = MENU.y + 100 / scale
+        local createBtnX = MENU_DESIGN_WIDTH - 180
+        local createBtnY = contentY - 5
+        local createBtnW = 160
+        local createBtnH = 32
+        
+        gameData.parties = gameData.parties or {}
+        local canCreateParty = #gameData.parties < 4
+        
+        if canCreateParty and Components.isPointInRect(designX, designY, createBtnX, createBtnY, createBtnW, createBtnH) then
+            partyCreationActive = true
+            selectedHeroesForParty = {}
+            partyCreationName = ""
+            return nil
+        end
+        
+        -- Party card buttons
+        local scrollY = contentY + 40
+        local cardHeight = 180
+        local cardSpacing = 12
+        local y = scrollY - partyScrollOffset
+        
+        for i, party in ipairs(gameData.parties) do
+            if y + cardHeight > scrollY and y < scrollY + (MENU_DESIGN_HEIGHT - 120 - 50) then
+                local cardY = y
+                local cardW = MENU_DESIGN_WIDTH - 40
+                local btnY = cardY + cardHeight - 35
+                
+                -- Details button
+                if Components.isPointInRect(designX, designY, 20 + cardW - 250, btnY, 75, 28) then
+                    selectedPartyDetail = party.id
+                    return nil
+                end
+                
+                -- Manage button
+                if Components.isPointInRect(designX, designY, 20 + cardW - 170, btnY, 75, 28) then
+                    -- TODO: Open party management
+                    return "info", "Party management coming soon!"
+                end
+                
+                -- Disband button
+                if Components.isPointInRect(designX, designY, 20 + cardW - 90, btnY, 75, 28) then
+                    partyToDisband = party.id
+                    return nil
+                end
+            end
+            
+            y = y + cardHeight + cardSpacing
         end
     end
 

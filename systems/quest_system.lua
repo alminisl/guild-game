@@ -159,19 +159,21 @@ function QuestSystem.update(gameData, dt, Heroes, Quests, Economy, GuildSystem, 
             phaseMax = quest.actualTravelTime or quest.travelTime
             if quest.phaseProgress >= phaseMax then
                 phaseComplete = true
-                quest.currentPhase = "execute"
+                -- Transition to awaiting_execute - wait for player to click "Execute"
+                quest.currentPhase = "awaiting_execute"
                 quest.phaseProgress = 0
                 -- Update heroes
                 for _, heroId in ipairs(quest.assignedHeroes) do
                     local hero = QuestSystem.getHeroById(heroId, gameData)
                     if hero then
-                        hero.status = "questing"
-                        hero.questPhase = "execute"
-                        hero.questProgress = 0
-                        hero.questPhaseMax = quest.actualExecuteTime or quest.executeTime
+                        hero.status = "at_location"
+                        hero.questPhase = "awaiting_execute"
                     end
                 end
             end
+        elseif quest.currentPhase == "awaiting_execute" then
+            -- Waiting for player to click "Execute Quest" button
+            -- No automatic progression
         elseif quest.currentPhase == "execute" then
             phaseMax = quest.actualExecuteTime or quest.executeTime
 
@@ -333,8 +335,190 @@ function QuestSystem.update(gameData, dt, Heroes, Quests, Economy, GuildSystem, 
     return results
 end
 
+-- Execute a quest (called when player clicks "Execute Quest" button)
+-- Resolves combat/narrative and returns result for display
+function QuestSystem.executeQuest(quest, gameData, Heroes, Quests, Economy, GuildSystem, Materials, EquipmentSystem)
+    if quest.currentPhase ~= "awaiting_execute" then
+        return nil  -- Quest not ready to execute
+    end
+
+    local heroList = QuestSystem.getQuestHeroes(quest, gameData)
+
+    -- Check for party luck bonus before resolution
+    local partyLuckBonus = PartySystem.getLuckBonus(heroList, gameData)
+
+    local result
+    if quest.isDungeon then
+        -- Dungeon: compile results from floor clears
+        result = QuestSystem.compileDungeonResult(quest, heroList, gameData, Quests, partyLuckBonus)
+    else
+        -- Normal quest resolution
+        result = Quests.resolve(quest, heroList, partyLuckBonus, gameData)
+    end
+
+    -- Party re-roll mechanic: if quest failed and heroes are a formed party, try again
+    if not result.success and PartySystem.canReroll(heroList, gameData) then
+        local rerollResult = Quests.resolve(quest, heroList, partyLuckBonus, gameData)
+        if rerollResult.success then
+            result = rerollResult
+            result.message = "Party bond triggered a re-roll! " .. result.message
+        else
+            result.message = result.message .. " (Party re-roll also failed)"
+        end
+    end
+
+    -- Store result in quest for later reference
+    quest.executionResult = result
+
+    -- Transition to awaiting_return - waiting for player to click "Return"
+    quest.currentPhase = "awaiting_return"
+    for _, heroId in ipairs(quest.assignedHeroes) do
+        local hero = QuestSystem.getHeroById(heroId, gameData)
+        if hero then
+            hero.status = "awaiting_return"
+            hero.questPhase = "awaiting_return"
+        end
+    end
+
+    return result, heroList
+end
+
+-- Start the return phase (called when player clicks "Return" after viewing combat log)
+function QuestSystem.startReturn(quest, gameData, Heroes, Quests, Economy, GuildSystem, Materials, EquipmentSystem)
+    if quest.currentPhase ~= "awaiting_return" then
+        return nil  -- Quest not ready for return
+    end
+
+    local heroList = QuestSystem.getQuestHeroes(quest, gameData)
+    local result = quest.executionResult
+
+    if not result then
+        return nil  -- No execution result stored
+    end
+
+    -- Track quest for party formation (only on success)
+    if result.success then
+        local party, justFormed = PartySystem.recordQuestSuccess(heroList, gameData)
+        if justFormed and party then
+            result.message = result.message .. " " .. party.name .. " has officially formed!"
+        end
+    end
+
+    -- Apply rewards
+    Economy.earn(gameData, result.goldReward)
+
+    -- Track dead and revived heroes
+    local deadHeroes = {}
+    local revivedHeroes = {}
+
+    -- Rank values for XP bonus calculation
+    local rankValues = {D = 1, C = 2, B = 3, A = 4, S = 5}
+    local questRankValue = rankValues[quest.rank] or 1
+
+    -- Award XP and handle death/revival
+    local baseXpPerHero = #heroList > 0 and math.floor(result.xpReward / #heroList) or 0
+    for _, hero in ipairs(heroList) do
+        -- Check if hero died in combat
+        local diedInCombat = false
+        for _, deadHero in ipairs(result.heroDeaths or {}) do
+            if deadHero.id == hero.id then
+                diedInCombat = true
+                break
+            end
+        end
+
+        if diedInCombat then
+            table.insert(deadHeroes, hero)
+        else
+            -- Calculate rank-differential XP bonus
+            local heroRankValue = rankValues[hero.rank] or 1
+            local rankDiff = questRankValue - heroRankValue
+            local xpMultiplier = 1.0
+            if rankDiff > 0 and result.success then
+                xpMultiplier = 1.0 + (rankDiff * 0.3)
+            end
+            local xpForHero = math.floor(baseXpPerHero * xpMultiplier)
+
+            local leveledUp = Heroes.addXP(hero, xpForHero)
+            if leveledUp then
+                result.message = result.message .. " " .. hero.name .. " leveled up!"
+            end
+        end
+    end
+
+    -- Remove dead heroes from roster
+    for _, deadHero in ipairs(deadHeroes) do
+        for i, hero in ipairs(gameData.heroes) do
+            if hero.id == deadHero.id then
+                table.remove(gameData.heroes, i)
+                break
+            end
+        end
+        deadHero.deathQuest = quest.name
+        deadHero.deathDay = gameData.day
+        table.insert(gameData.graveyard, deadHero)
+        result.message = result.message .. " " .. deadHero.name .. " has fallen in combat!"
+    end
+
+    -- Handle guild XP and reputation
+    local guildResult = {}
+    if GuildSystem then
+        guildResult = GuildSystem.onQuestComplete(gameData, quest, result.success)
+    end
+
+    -- Calculate and add material drops (only on success)
+    local materialDrops = {}
+    if result.success and Materials then
+        materialDrops = Materials.calculateDrops(quest, heroList, EquipmentSystem)
+        for matId, count in pairs(materialDrops) do
+            gameData.inventory.materials[matId] = (gameData.inventory.materials[matId] or 0) + count
+        end
+    end
+
+    -- Now start the return phase
+    quest.currentPhase = "return"
+    quest.phaseProgress = 0
+
+    -- Build a set of dead hero IDs for quick lookup
+    local deadHeroIds = {}
+    for _, deadHero in ipairs(deadHeroes) do
+        deadHeroIds[deadHero.id] = true
+    end
+
+    for _, heroId in ipairs(quest.assignedHeroes) do
+        local hero = QuestSystem.getHeroById(heroId, gameData)
+        if hero and not deadHeroIds[heroId] then
+            hero.status = "returning"
+            hero.questPhase = "return"
+            hero.questProgress = 0
+            hero.questPhaseMax = quest.actualReturnTime or quest.returnTime
+        end
+    end
+
+    -- Mark quest status
+    quest.status = result.success and "completed" or "failed"
+
+    -- Return full result for the popup
+    return {
+        quest = quest,
+        success = result.success,
+        goldReward = result.goldReward,
+        xpReward = result.xpReward,
+        message = result.message,
+        deadHeroes = deadHeroes,
+        materialDrops = materialDrops,
+        guildLevelUp = guildResult.guildLevelUp,
+        guildXP = guildResult.guildXP,
+        tierChanged = guildResult.tierChanged,
+        combatLog = result.combatLog,
+        combatSummary = result.combatSummary,
+        narrative = result.narrative
+    }
+end
+
 -- Claim a completed quest (called when player clicks on awaiting_claim quest)
 -- Returns the result to show in the popup, and starts the return phase
+-- DEPRECATED: Use executeQuest + startReturn instead for new flow
 function QuestSystem.claimQuest(quest, gameData, Heroes, Quests, Economy, GuildSystem, Materials, EquipmentSystem)
     if quest.currentPhase ~= "awaiting_claim" then
         return nil  -- Quest not ready to claim
@@ -351,12 +535,12 @@ function QuestSystem.claimQuest(quest, gameData, Heroes, Quests, Economy, GuildS
         result = QuestSystem.compileDungeonResult(quest, heroList, gameData, Quests, partyLuckBonus)
     else
         -- Normal quest resolution
-        result = Quests.resolve(quest, heroList, partyLuckBonus)
+        result = Quests.resolve(quest, heroList, partyLuckBonus, gameData)
     end
 
     -- Party re-roll mechanic: if quest failed and heroes are a formed party, try again
     if not result.success and PartySystem.canReroll(heroList, gameData) then
-        local rerollResult = Quests.resolve(quest, heroList, partyLuckBonus)
+        local rerollResult = Quests.resolve(quest, heroList, partyLuckBonus, gameData)
         if rerollResult.success then
             result = rerollResult
             result.message = "Party bond triggered a re-roll! " .. result.message
@@ -595,8 +779,8 @@ function QuestSystem.resolveFloor(quest, gameData, Heroes, Quests, EquipmentSyst
         partyWiped = false
     }
 
-    -- Calculate success chance with fatigue penalty
-    local successChance = Quests.calculateFloorSuccessChance(quest, heroList, floorNumber, EquipmentSystem)
+    -- Calculate success chance with fatigue penalty (includes party trait bonuses)
+    local successChance = Quests.calculateFloorSuccessChance(quest, heroList, floorNumber, EquipmentSystem, gameData)
     result.success = math.random() <= successChance
 
     if result.success then

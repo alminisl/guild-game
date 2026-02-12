@@ -15,11 +15,11 @@
             "S": { "travel": 12, "execute": 32, "return": 12 }
         },
         "expectedStats": {
-            "D": 18,
-            "C": 32,
-            "B": 50,
-            "A": 72,
-            "S": 92
+            "D": 16,
+            "C": 29,
+            "B": 47,
+            "A": 70,
+            "S": 90
         },
         "rankBonus": {
             "D": 0.20,
@@ -941,5 +941,135 @@
                 ]
             }
         ]
-    }
+    },
+    "partyQuests": [
+        {
+            "id": "dragon_lair",
+            "name": "Dragon's Lair",
+            "rank": "S",
+            "description": "Face the ancient dragon Valdris in his volcanic lair",
+            "reward": 2500,
+            "xpReward": 800,
+            "requiredStat": "str",
+            "faction": "humans",
+            "combat": true,
+            "timeOfDay": "any",
+            "partyOnly": true,
+            "minimumPartyTier": "Veteran",
+            "isDungeon": true,
+            "floors": 5,
+            "bossEncounter": true,
+            "possibleRewards": [
+                { "type": "material", "id": "dragon_scale", "amount": 8, "dropChance": 1.0 },
+                { "type": "material", "id": "dragon_heart", "amount": 1, "dropChance": 0.8 },
+                { "type": "gold", "amount": 1000, "dropChance": 1.0 },
+                { "type": "equipment", "id": "legendary_sword", "amount": 1, "dropChance": 0.3 }
+            ],
+            "unlockRequirements": {
+                "guildLevel": 8
+            }
+        },
+        {
+            "id": "bandit_fortress",
+            "name": "Bandit Fortress Siege",
+            "rank": "A",
+            "description": "Storm the fortified bandit stronghold",
+            "reward": 1000,
+            "xpReward": 300,
+            "requiredStat": "str",
+            "faction": "humans",
+            "combat": true,
+            "timeOfDay": "any",
+            "partyOnly": true,
+            "minimumPartyTier": "Bonded",
+            "isDungeon": true,
+            "floors": 4,
+            "possibleRewards": [
+                { "type": "material", "id": "steel_ingot", "amount": 5, "dropChance": 0.9 },
+                { "type": "material", "id": "rare_wood", "amount": 4, "dropChance": 0.7 },
+                { "type": "gold", "amount": 300, "dropChance": 0.8 },
+                { "type": "equipment", "id": "bandit_armor", "amount": 1, "dropChance": 0.4 }
+            ],
+            "unlockRequirements": {
+                "guildLevel": 5
+            }
+        },
+        {
+            "id": "undead_catacombs",
+            "name": "Undead Catacombs",
+            "rank": "B",
+            "description": "Clear the ancient tombs beneath the city",
+            "reward": 400,
+            "xpReward": 120,
+            "requiredStat": "int",
+            "faction": "humans",
+            "combat": true,
+            "timeOfDay": "any",
+            "partyOnly": true,
+            "minimumPartyTier": "Fresh",
+            "isDungeon": true,
+            "floors": 3,
+            "possibleRewards": [
+                { "type": "material", "id": "bone_dust", "amount": 6, "dropChance": 0.8 },
+                { "type": "material", "id": "cursed_gem", "amount": 2, "dropChance": 0.5 },
+                { "type": "gold", "amount": 150, "dropChance": 0.7 }
+            ],
+            "unlockRequirements": {
+                "guildLevel": 3
+            }
+        },
+        {
+            "id": "kraken_depths",
+            "name": "Kraken of the Depths",
+            "rank": "S",
+            "description": "Dive into the ocean abyss to battle the legendary kraken",
+            "reward": 3000,
+            "xpReward": 800,
+            "requiredStat": "dex",
+            "faction": "elves",
+            "combat": true,
+            "timeOfDay": "any",
+            "partyOnly": true,
+            "minimumPartyTier": "Elite",
+            "isDungeon": true,
+            "floors": 5,
+            "bossEncounter": true,
+            "possibleRewards": [
+                { "type": "material", "id": "kraken_ink", "amount": 5, "dropChance": 1.0 },
+                { "type": "material", "id": "ocean_pearl", "amount": 3, "dropChance": 0.9 },
+                { "type": "gold", "amount": 1200, "dropChance": 1.0 },
+                { "type": "equipment", "id": "trident_of_tides", "amount": 1, "dropChance": 0.25 }
+            ],
+            "unlockRequirements": {
+                "guildLevel": 9,
+                "factionRep": { "faction": "elves", "tier": "Friendly" }
+            }
+        },
+        {
+            "id": "lich_tower",
+            "name": "The Lich's Tower",
+            "rank": "S",
+            "description": "Ascend the cursed tower and defeat the immortal lich",
+            "reward": 2800,
+            "xpReward": 800,
+            "requiredStat": "int",
+            "faction": "humans",
+            "combat": true,
+            "timeOfDay": "night",
+            "partyOnly": true,
+            "minimumPartyTier": "Veteran",
+            "isDungeon": true,
+            "floors": 6,
+            "bossEncounter": true,
+            "possibleRewards": [
+                { "type": "material", "id": "lich_phylactery", "amount": 1, "dropChance": 1.0 },
+                { "type": "material", "id": "death_essence", "amount": 4, "dropChance": 0.85 },
+                { "type": "gold", "amount": 800, "dropChance": 1.0 },
+                { "type": "equipment", "id": "staff_of_necromancy", "amount": 1, "dropChance": 0.2 }
+            ],
+            "unlockRequirements": {
+                "guildLevel": 8
+            }
+        }
+    ]
 }

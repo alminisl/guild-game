@@ -1,0 +1,195 @@
+{
+    "traits": [
+        {
+            "id": "tested_in_fire",
+            "name": "Tested in Fire",
+            "icon": "🔥",
+            "description": "+10% success on dangerous quests (A/S rank)",
+            "requirement": {
+                "type": "survive_failures",
+                "count": 3,
+                "minRank": "A"
+            },
+            "bonus": {
+                "successBonus": 0.10,
+                "questRanks": ["A", "S"]
+            },
+            "rarity": "uncommon"
+        },
+        {
+            "id": "treasure_magnets",
+            "name": "Treasure Magnets",
+            "icon": "💎",
+            "description": "+15% rare material drop chance",
+            "requirement": {
+                "type": "find_rare_materials",
+                "count": 10
+            },
+            "bonus": {
+                "rareDropBonus": 0.15
+            },
+            "rarity": "uncommon"
+        },
+        {
+            "id": "lightning_strike",
+            "name": "Lightning Strike",
+            "icon": "⚡",
+            "description": "-15% quest duration",
+            "requirement": {
+                "type": "fast_completions",
+                "count": 5,
+                "maxDuration": 30
+            },
+            "bonus": {
+                "questDurationReduction": 0.15
+            },
+            "rarity": "rare"
+        },
+        {
+            "id": "unbreakable",
+            "name": "Unbreakable Bond",
+            "icon": "🛡️",
+            "description": "+20% survival, equipment protected on death",
+            "requirement": {
+                "type": "no_deaths",
+                "questsCompleted": 15
+            },
+            "bonus": {
+                "survivalBonus": 0.20,
+                "protectEquipment": true
+            },
+            "rarity": "rare"
+        },
+        {
+            "id": "gold_rush",
+            "name": "Gold Rush",
+            "icon": "💰",
+            "description": "+30% gold from all quests",
+            "requirement": {
+                "type": "total_gold_earned",
+                "amount": 5000
+            },
+            "bonus": {
+                "goldBonus": 0.30
+            },
+            "rarity": "uncommon"
+        },
+        {
+            "id": "perfect_sync",
+            "name": "Perfect Synchronization",
+            "icon": "✨",
+            "description": "+25% success, all synergies enhanced by 50%",
+            "requirement": {
+                "type": "perfect_quests",
+                "count": 10,
+                "requireNoInjuries": true
+            },
+            "bonus": {
+                "successBonus": 0.25,
+                "synergyMultiplier": 1.5
+            },
+            "rarity": "legendary"
+        },
+        {
+            "id": "comeback_kings",
+            "name": "Comeback Kings",
+            "icon": "🎲",
+            "description": "50% chance to turn failures into narrow successes",
+            "requirement": {
+                "type": "clutch_victories",
+                "count": 5,
+                "winAfterReroll": true
+            },
+            "bonus": {
+                "clutchChance": 0.50
+            },
+            "rarity": "rare"
+        },
+        {
+            "id": "faction_heroes",
+            "name": "Faction Heroes",
+            "icon": "🏛️",
+            "description": "+50% reputation gains with primary faction",
+            "requirement": {
+                "type": "faction_rep",
+                "tier": "Exalted",
+                "anyFaction": true
+            },
+            "bonus": {
+                "reputationBonus": 0.50
+            },
+            "rarity": "rare"
+        },
+        {
+            "id": "dungeon_masters",
+            "name": "Dungeon Masters",
+            "icon": "🗝️",
+            "description": "+15% success in dungeons, reduced fatigue",
+            "requirement": {
+                "type": "complete_dungeons",
+                "count": 10
+            },
+            "bonus": {
+                "dungeonSuccessBonus": 0.15,
+                "fatigueReduction": 0.30
+            },
+            "rarity": "uncommon"
+        },
+        {
+            "id": "dragon_slayers",
+            "name": "Dragon Slayers",
+            "icon": "🐉",
+            "description": "+30% success on S-rank quests",
+            "requirement": {
+                "type": "complete_s_rank",
+                "count": 5
+            },
+            "bonus": {
+                "successBonus": 0.30,
+                "questRanks": ["S"]
+            },
+            "rarity": "legendary"
+        },
+        {
+            "id": "night_owls",
+            "name": "Night Owls",
+            "icon": "🌙",
+            "description": "+20% success on night quests",
+            "requirement": {
+                "type": "complete_night_quests",
+                "count": 15
+            },
+            "bonus": {
+                "successBonus": 0.20,
+                "questTime": "night"
+            },
+            "rarity": "uncommon"
+        },
+        {
+            "id": "survivors",
+            "name": "Born Survivors",
+            "icon": "💀",
+            "description": "Survive one party wipe per day",
+            "requirement": {
+                "type": "near_death_survival",
+                "count": 3
+            },
+            "bonus": {
+                "dailyRevive": true
+            },
+            "rarity": "legendary"
+        }
+    ],
+    "config": {
+        "maxTraitsPerParty": 5,
+        "showProgressNotifications": true,
+        "traitCategories": {
+            "combat": ["tested_in_fire", "unbreakable", "dragon_slayers"],
+            "economy": ["treasure_magnets", "gold_rush"],
+            "efficiency": ["lightning_strike", "dungeon_masters"],
+            "synergy": ["perfect_sync", "comeback_kings"],
+            "reputation": ["faction_heroes", "night_owls"],
+            "survival": ["survivors"]
+        }
+    }
+}

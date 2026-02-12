@@ -26,6 +26,7 @@ local SaveMenu = require("ui.save_menu")
 local SaveSystem = require("systems.save_system")
 local SettingsMenu = require("ui.settings_menu")
 local EditMode = require("ui.edit_mode")
+local MilestoneSystem = require("systems.milestone_system")
 
 -- Game States
 local STATE = {
@@ -44,7 +45,7 @@ local gameData = {
     day = 1,
     dayProgress = 0,
     totalTime = 0,
-    gold = 200,
+    gold = 300,
     heroes = {},           -- Hired heroes
     tavernPool = {},       -- Heroes available for hire
     availableQuests = {},  -- Quests that can be assigned
@@ -107,10 +108,18 @@ function love.load()
     -- Initialize available quests
     gameData.availableQuests = Quests.generatePool(5, maxRank, gameData)
 
-    -- Give player one starter hero (Human Knight)
-    local starterHero = Heroes.generate({rank = "D", name = "Recruit Marcus", race = "Human", class = "Knight"})
-    starterHero.status = "idle"
-    table.insert(gameData.heroes, starterHero)
+    -- Give player three starter heroes for a proper early game party
+    local starterKnight = Heroes.generate({rank = "D", name = "Marcus", race = "Human", class = "Knight"})
+    starterKnight.status = "idle"
+    table.insert(gameData.heroes, starterKnight)
+
+    local starterArcher = Heroes.generate({rank = "D", name = "Elena", race = "Elf", class = "Archer"})
+    starterArcher.status = "idle"
+    table.insert(gameData.heroes, starterArcher)
+
+    local starterPriest = Heroes.generate({rank = "D", name = "Brother Thomas", race = "Human", class = "Priest"})
+    starterPriest.status = "idle"
+    table.insert(gameData.heroes, starterPriest)
 
     -- Give player some starter materials for testing
     gameData.inventory.materials = {
@@ -126,9 +135,16 @@ function love.load()
 
     -- Preload hero sprites
     SpriteSystem.preloadAll()
+    
+    -- Preload UI assets
+    local UIAssets = require("ui.ui_assets")
+    UIAssets.preloadAll()
 
     -- Initialize settings menu
     SettingsMenu.init()
+
+    -- Initialize milestone tracking
+    MilestoneSystem.init(gameData)
 end
 
 -- Update game (real-time)
@@ -204,6 +220,9 @@ function love.update(dt)
             notificationTimer = 0
         end
     end
+
+    -- Update quest result modal animation
+    QuestResultModal.update(dt)
 end
 
 -- Note: Max rank is now determined by GuildSystem.getMaxTavernRank() based on guild level
@@ -215,24 +234,31 @@ function love.draw()
         Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
     elseif currentState == STATE.TAVERN then
         Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
+        drawHeroAnimations()  -- Draw hero animations behind tavern menu
         TavernMenu.draw(gameData, Economy, GuildSystem)
     elseif currentState == STATE.GUILD then
         Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
+        drawHeroAnimations()  -- Draw hero animations behind guild menu
         GuildMenu.draw(gameData, QuestSystem, Quests, Heroes, TimeSystem, GuildSystem, Equipment, EquipmentSystem)
     elseif currentState == STATE.ARMORY then
         Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
+        drawHeroAnimations()  -- Draw hero animations behind armory menu
         ArmoryMenu.draw(gameData, Equipment, Materials, Recipes, EquipmentSystem, CraftingSystem, Economy, Heroes)
     elseif currentState == STATE.POTION then
         Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
+        drawHeroAnimations()  -- Draw hero animations behind potion menu
         PotionMenu.draw(gameData, Items, Heroes, Economy)
     elseif currentState == STATE.SAVE_MENU then
         Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
+        drawHeroAnimations()  -- Draw hero animations behind save menu
         SaveMenu.draw(gameData)
     elseif currentState == STATE.SETTINGS then
         Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
+        drawHeroAnimations()  -- Draw hero animations behind settings menu
         SettingsMenu.draw(gameData)
     elseif currentState == STATE.EDIT_MODE then
         Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
+        drawHeroAnimations()  -- Draw hero animations behind edit mode
         EditMode.draw(gameData, mouseX, mouseY)
     end
 
@@ -246,9 +272,6 @@ function love.draw()
         QuestResultModal.draw(Heroes)
     end
 
-    -- Draw hero departure/arrival animations (on top of menus)
-    drawHeroAnimations()
-
     -- Draw notifications
     drawNotifications()
 end
@@ -258,6 +281,14 @@ local heroAnims = {}
 local heroAnimTime = 0
 -- Pre-allocated table for removal indices (avoids allocation in update loop)
 local animsToRemove = {}
+
+-- Easing function for smooth acceleration/deceleration
+-- Uses smoothstep (3t^2 - 2t^3) for smooth start and end
+local function smoothEase(t)
+    if t <= 0 then return 0 end
+    if t >= 1 then return 1 end
+    return t * t * (3 - 2 * t)
+end
 
 -- Draw heroes leaving/arriving
 drawHeroAnimations = function()
@@ -270,14 +301,35 @@ drawHeroAnimations = function()
     for i = 1, #animsToRemove do animsToRemove[i] = nil end
 
     for i, anim in ipairs(heroAnims) do
-        -- Update position
-        anim.y = anim.y + anim.speedY * dt
+        -- Update animation time
+        anim.time = anim.time + dt
+        
+        -- Calculate progress (0 to 1)
+        local progress = math.min(1, anim.time / anim.duration)
+        
+        -- Apply easing for smooth movement
+        local easedProgress = smoothEase(progress)
+        
+        -- Calculate position based on eased progress
+        anim.y = anim.startY + (anim.targetY - anim.startY) * easedProgress
 
-        -- Check if done
-        if anim.type == "departing" and anim.y >= anim.targetY then
+        -- Check if animation is complete
+        if progress >= 1 then
             table.insert(animsToRemove, i)
-        elseif anim.type == "arriving" and anim.y <= anim.targetY then
-            table.insert(animsToRemove, i)
+        end
+
+        -- Calculate fade effect for departing heroes
+        local alpha = 1
+        if anim.type == "departing" then
+            -- Fade out during last 30% of animation
+            if progress > 0.7 then
+                alpha = 1 - ((progress - 0.7) / 0.3)
+            end
+        elseif anim.type == "arriving" then
+            -- Fade in during first 30% of animation
+            if progress < 0.3 then
+                alpha = progress / 0.3
+            end
         end
 
         -- Draw the hero sprite using Walk animation
@@ -288,13 +340,13 @@ drawHeroAnimations = function()
                 -- Calculate animation frame (8 FPS)
                 local frameIndex = math.floor(heroAnimTime * 8) % spriteData.frameCount + 1
 
-                love.graphics.setColor(1, 1, 1, 1)
+                love.graphics.setColor(1, 1, 1, alpha)
                 love.graphics.draw(
                     spriteData.image,
                     spriteData.quads[frameIndex],
                     anim.x, anim.y,
                     0,  -- rotation
-                    2.25, 2.25,  -- scale (50% larger than before)
+                    2.25, 2.25,  -- scale
                     spriteData.frameWidth / 2,
                     spriteData.frameHeight / 2
                 )
@@ -309,13 +361,14 @@ drawHeroAnimations = function()
 end
 
 -- Add departing heroes (called from quest system via global lookup)
--- Heroes walk from guild hall toward bottom of screen
+-- Heroes walk from guild hall toward bottom of screen with smooth easing
 -- NOTE: This function is intentionally global as it's called from quest_system.lua
 function addDepartingHeroes(heroes)
     local guildX = 640   -- Center of screen (guild position)
     local guildY = 280   -- Below the guild building
     local exitY = 800    -- Off screen at bottom
     local horizontalSpacing = 50  -- Space between heroes walking side by side
+    local duration = 2.5  -- Animation duration in seconds (slower for smoother feel)
 
     -- Center the group horizontally
     local startX = guildX - (#heroes - 1) * horizontalSpacing / 2
@@ -325,21 +378,24 @@ function addDepartingHeroes(heroes)
             hero = hero,
             x = startX + (i - 1) * horizontalSpacing,
             y = guildY,
+            startY = guildY,
             targetY = exitY,
-            speedY = 150,
+            time = 0,
+            duration = duration,
             type = "departing"
         })
     end
 end
 
 -- Add arriving heroes (called from quest system via global lookup)
--- Heroes walk from bottom of screen back to guild hall
+-- Heroes walk from bottom of screen back to guild hall with smooth easing
 -- NOTE: This function is intentionally global as it's called from quest_system.lua
 function addArrivingHeroes(heroes)
     local guildX = 640   -- Center of screen (guild position)
     local guildY = 280   -- Below the guild building
     local exitY = 800    -- Off screen at bottom
     local horizontalSpacing = 50  -- Space between heroes walking side by side
+    local duration = 2.5  -- Animation duration in seconds (slower for smoother feel)
 
     -- Center the group horizontally
     local startX = guildX - (#heroes - 1) * horizontalSpacing / 2
@@ -349,8 +405,10 @@ function addArrivingHeroes(heroes)
             hero = hero,
             x = startX + (i - 1) * horizontalSpacing,
             y = exitY,
+            startY = exitY,
             targetY = guildY,
-            speedY = -150,
+            time = 0,
+            duration = duration,
             type = "arriving"
         })
     end
@@ -392,6 +450,8 @@ addNotification = function(message, notifType)
         color = {0.5, 0.2, 0.2}
     elseif notifType == "warning" then
         color = {0.5, 0.4, 0.2}
+    elseif notifType == "milestone" then
+        color = {0.6, 0.5, 0.2}  -- Gold color for milestones
     else
         color = {0.3, 0.3, 0.4}
     end
@@ -457,6 +517,12 @@ function love.mousepressed(x, y, button)
             currentState = STATE.TOWN
         elseif result == "hired" then
             addNotification(message, "success")
+            -- Check milestones after hiring
+            local newMilestones = MilestoneSystem.checkMilestones(gameData)
+            for _, milestone in ipairs(newMilestones) do
+                local rewardText = milestone.reward and milestone.reward.gold and (" +" .. milestone.reward.gold .. "g") or ""
+                addNotification("Milestone: " .. milestone.name .. rewardText, "milestone")
+            end
         elseif result == "refreshed" then
             addNotification(message, "info")
         elseif result == "error" then
@@ -474,7 +540,70 @@ function love.mousepressed(x, y, button)
             addNotification(message, "success")
         elseif result == "fired" then
             addNotification(message, "info")
+        elseif result == "execute_quest" then
+            -- Player clicked "Execute Quest" button - run combat/narrative and show log
+            local quest = message
+            local execResult, heroList = QuestSystem.executeQuest(quest, gameData, Heroes, Quests, Economy, GuildSystem, Materials, EquipmentSystem)
+            if execResult then
+                -- Build and show combat log / narrative modal immediately
+                local modalResult = {
+                    quest = quest,
+                    success = execResult.success,
+                    goldReward = 0,  -- Rewards shown after return
+                    xpReward = 0,
+                    message = execResult.message,
+                    materialDrops = {},
+                    heroOutcomes = {},
+                    combatLog = execResult.combatLog,
+                    combatSummary = execResult.combatSummary,
+                    narrative = execResult.narrative,
+                    -- Special flag to show this is execution phase (not final result)
+                    isExecutionResult = true,
+                    _logScrollOffset = 0
+                }
+
+                -- Build hero outcomes for display
+                for _, hero in ipairs(heroList) do
+                    local outcome = {
+                        hero = hero,
+                        injury = nil,
+                        restTime = 0,
+                        leveledUp = false,
+                        died = false
+                    }
+                    -- Check for death in combat
+                    for _, deadHero in ipairs(execResult.heroDeaths or {}) do
+                        if deadHero.id == hero.id then
+                            outcome.died = true
+                            break
+                        end
+                    end
+                    table.insert(modalResult.heroOutcomes, outcome)
+                end
+
+                QuestResultModal.push(modalResult)
+                addNotification(quest.name .. ": " .. (execResult.success and "Victory!" or "Defeat!"), execResult.success and "success" or "warning")
+            end
+
+        elseif result == "start_return" then
+            -- Player clicked "Return" - start heroes returning and process rewards
+            local quest = message
+            local returnResult = QuestSystem.startReturn(quest, gameData, Heroes, Quests, Economy, GuildSystem, Materials, EquipmentSystem)
+            if returnResult then
+                addNotification(quest.name .. ": Heroes returning...", "info")
+
+                -- Track milestone progress
+                local heroList = QuestSystem.getQuestHeroes(quest, gameData)
+                MilestoneSystem.onQuestComplete(gameData, quest, returnResult.success, heroList, returnResult.deadHeroes)
+                local newMilestones = MilestoneSystem.checkMilestones(gameData)
+                for _, milestone in ipairs(newMilestones) do
+                    local rewardText = milestone.reward and milestone.reward.gold and (" +" .. milestone.reward.gold .. "g") or ""
+                    addNotification("Milestone: " .. milestone.name .. rewardText, "milestone")
+                end
+            end
+
         elseif result == "claim_quest" then
+            -- DEPRECATED: Old flow - keeping for backwards compatibility
             -- message is actually the quest object
             local quest = message
             local claimResult = QuestSystem.claimQuest(quest, gameData, Heroes, Quests, Economy, GuildSystem, Materials, EquipmentSystem)
@@ -496,6 +625,14 @@ function love.mousepressed(x, y, button)
                 -- Show toast notification
                 local msgType = claimResult.success and "success" or "warning"
                 addNotification(quest.name .. ": " .. (claimResult.success and "Complete!" or "Failed!"), msgType)
+
+                -- Track milestone progress
+                MilestoneSystem.onQuestComplete(gameData, quest, claimResult.success, heroList, claimResult.deadHeroes)
+                local newMilestones = MilestoneSystem.checkMilestones(gameData)
+                for _, milestone in ipairs(newMilestones) do
+                    local rewardText = milestone.reward and milestone.reward.gold and (" +" .. milestone.reward.gold .. "g") or ""
+                    addNotification("Milestone: " .. milestone.name .. rewardText, "milestone")
+                end
 
                 -- Faction tier change notification
                 if claimResult.tierChanged then
@@ -720,6 +857,12 @@ end
 -- Mouse wheel handler for scrolling
 function love.wheelmoved(x, y)
     local mx, my = love.mouse.getPosition()
+
+    -- Handle scroll in quest result modal (battle log)
+    if QuestResultModal.isOpen() then
+        QuestResultModal.handleScroll(y)
+        return
+    end
 
     -- Handle scroll in Edit Mode
     if currentState == STATE.EDIT_MODE then

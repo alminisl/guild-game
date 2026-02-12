@@ -4,17 +4,18 @@
 local Guild = {}
 
 -- Guild level configuration (increased hero slots for more party variety)
+-- XP requirements reduced by 20% for levels 5-10 to improve mid-game pacing
 Guild.levels = {
     {xp = 0,     heroSlots = 4,  questSlots = 2, maxRank = "C"},  -- Level 1
     {xp = 200,   heroSlots = 8,  questSlots = 3, maxRank = "C"},  -- Level 2: +4 heroes, +1 quest
     {xp = 500,   heroSlots = 10, questSlots = 3, maxRank = "B"},  -- Level 3
     {xp = 1000,  heroSlots = 12, questSlots = 4, maxRank = "B"},  -- Level 4
-    {xp = 2000,  heroSlots = 14, questSlots = 4, maxRank = "A"},  -- Level 5
-    {xp = 3500,  heroSlots = 16, questSlots = 5, maxRank = "A"},  -- Level 6
-    {xp = 5500,  heroSlots = 18, questSlots = 5, maxRank = "A"},  -- Level 7
-    {xp = 8000,  heroSlots = 20, questSlots = 6, maxRank = "S"},  -- Level 8
-    {xp = 11000, heroSlots = 22, questSlots = 6, maxRank = "S"},  -- Level 9
-    {xp = 15000, heroSlots = 24, questSlots = 8, maxRank = "S"}   -- Level 10
+    {xp = 1800,  heroSlots = 14, questSlots = 4, maxRank = "A"},  -- Level 5 (was 2000, -10%)
+    {xp = 3000,  heroSlots = 16, questSlots = 5, maxRank = "A"},  -- Level 6 (was 3500, -14%)
+    {xp = 4500,  heroSlots = 18, questSlots = 5, maxRank = "A"},  -- Level 7 (was 5500, -18%)
+    {xp = 6500,  heroSlots = 20, questSlots = 6, maxRank = "S"},  -- Level 8 (was 8000, -19%)
+    {xp = 9000,  heroSlots = 22, questSlots = 6, maxRank = "S"},  -- Level 9 (was 11000, -18%)
+    {xp = 12000, heroSlots = 24, questSlots = 8, maxRank = "S"}   -- Level 10 (was 15000, -20%)
 }
 
 -- Faction definitions
