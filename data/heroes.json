@@ -22,23 +22,30 @@
             "S": 5
         },
         "baseStats": {
-            "D": { "min": 13, "max": 19, "cap": 35 },
-            "C": { "min": 24, "max": 34, "cap": 55 },
-            "B": { "min": 40, "max": 54, "cap": 75 },
-            "A": { "min": 63, "max": 79, "cap": 95 },
-            "S": { "min": 84, "max": 96, "cap": 100 }
+            "D": { "min": 5, "max": 10, "cap": 35 },
+            "C": { "min": 16, "max": 22, "cap": 55 },
+            "B": { "min": 30, "max": 40, "cap": 75 },
+            "A": { "min": 51, "max": 65, "cap": 95 },
+            "S": { "min": 72, "max": 84, "cap": 100 }
+        },
+        "statGainPerLevel": {
+            "D": 2,
+            "C": 2,
+            "B": 3,
+            "A": 3,
+            "S": 3
         },
         "guildLevelToHeroLevel": {
-            "1": { "min": 1, "max": 2 },
-            "2": { "min": 2, "max": 3 },
-            "3": { "min": 3, "max": 4 },
-            "4": { "min": 4, "max": 5 },
-            "5": { "min": 5, "max": 6 },
-            "6": { "min": 6, "max": 7 },
-            "7": { "min": 7, "max": 8 },
-            "8": { "min": 8, "max": 9 },
-            "9": { "min": 9, "max": 10 },
-            "10": { "min": 10, "max": 10 }
+            "1": { "min": 1, "max": 1 },
+            "2": { "min": 1, "max": 2 },
+            "3": { "min": 2, "max": 3 },
+            "4": { "min": 3, "max": 4 },
+            "5": { "min": 4, "max": 5 },
+            "6": { "min": 5, "max": 6 },
+            "7": { "min": 6, "max": 7 },
+            "8": { "min": 7, "max": 8 },
+            "9": { "min": 8, "max": 9 },
+            "10": { "min": 9, "max": 10 }
         },
         "maxLevelByRank": {
             "D": 4,
@@ -51,7 +58,7 @@
     },
     "classes": {
         "Knight": {
-            "statBonus": { "str": 3, "dex": 0, "int": 0, "vit": 3, "luck": 0 },
+            "statBonus": { "str": 0, "dex": 0, "int": 0, "vit": 0, "luck": 0 },
             "description": "Heavy armor, high defense",
             "awakened": "Paladin",
             "primaryStat": "str",
@@ -66,7 +73,7 @@
             ]
         },
         "Archer": {
-            "statBonus": { "str": 0, "dex": 5, "int": 0, "vit": 0, "luck": 0 },
+            "statBonus": { "str": 0, "dex": 0, "int": 0, "vit": 0, "luck": 0 },
             "description": "Ranged attacks, high accuracy",
             "awakened": "Hawkeye",
             "primaryStat": "dex",
@@ -81,7 +88,7 @@
             ]
         },
         "Mage": {
-            "statBonus": { "str": 0, "dex": 0, "int": 5, "vit": 0, "luck": 0 },
+            "statBonus": { "str": 0, "dex": 0, "int": 0, "vit": 0, "luck": 0 },
             "description": "Powerful magic, low defense",
             "awakened": "Archmage",
             "primaryStat": "int",
@@ -96,7 +103,7 @@
             ]
         },
         "Rogue": {
-            "statBonus": { "str": 0, "dex": 3, "int": 0, "vit": 0, "luck": 2 },
+            "statBonus": { "str": 0, "dex": 0, "int": 0, "vit": 0, "luck": 0 },
             "description": "Fast and sneaky, critical hits",
             "awakened": "Shadow",
             "primaryStat": "dex",
@@ -111,7 +118,7 @@
             ]
         },
         "Priest": {
-            "statBonus": { "str": 0, "dex": 0, "int": 3, "vit": 3, "luck": 0 },
+            "statBonus": { "str": 0, "dex": 0, "int": 0, "vit": 0, "luck": 0 },
             "description": "Healing magic, support",
             "awakened": "Saint",
             "primaryStat": "int",
@@ -130,7 +137,7 @@
             }
         },
         "Ranger": {
-            "statBonus": { "str": 0, "dex": 3, "int": 0, "vit": 3, "luck": 0 },
+            "statBonus": { "str": 0, "dex": 0, "int": 0, "vit": 0, "luck": 0 },
             "description": "Versatile, nature skills",
             "awakened": "Warden",
             "primaryStat": "dex",

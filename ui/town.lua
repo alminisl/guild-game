@@ -504,17 +504,18 @@ local function drawBuilding(building, isHovered, mouseX, mouseY)
         love.graphics.draw(sprite, drawX, drawY, 0, scale, scale)
     end
 
-    -- Draw label for interactive buildings
+    -- Draw label for interactive buildings (floating gold text like reference image)
     if b.name then
-        local labelWidth = love.graphics.getFont():getWidth(b.name) + 20
-        local labelX = b.x - labelWidth / 2
-        local labelY = b.y - 25
-
-        love.graphics.setColor(0, 0, 0, 0.75)
-        love.graphics.rectangle("fill", labelX, labelY, labelWidth, 22, 4, 4)
-
-        love.graphics.setColor(1, 1, 1)
-        love.graphics.printf(b.name, labelX, labelY + 4, labelWidth, "center")
+        local labelX = b.x
+        local labelY = b.y - 35
+        
+        -- Shadow for readability
+        love.graphics.setColor(0, 0, 0, 0.7)
+        love.graphics.printf(b.name, labelX - 150 + 2, labelY + 2, 300, "center")
+        
+        -- Gold text (reference image style)
+        love.graphics.setColor(1, 0.85, 0.3)
+        love.graphics.printf(b.name, labelX - 150, labelY, 300, "center")
 
         if isHovered and b.description then
             local tooltipWidth = 180

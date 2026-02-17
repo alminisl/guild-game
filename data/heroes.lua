@@ -310,16 +310,65 @@ local function generateStats(rank, class, race)
     local classBonus = classData and classData.statBonus or {str = 0, dex = 0, int = 0, vit = 0, luck = 0}
     local raceBonus = raceData and raceData.statBonus or {str = 0, dex = 0, int = 0, vit = 0, luck = 0}
 
-    -- Get rank-specific stat cap (D/C/B max 10, A max 17, S max 20)
+    -- Get rank-specific stat cap
     local statCap = range.cap or 10
 
-    local stats = {
-        str = math.random(range.min, range.max) + (classBonus.str or 0) + (raceBonus.str or 0),
-        dex = math.random(range.min, range.max) + (classBonus.dex or 0) + (raceBonus.dex or 0),
-        int = math.random(range.min, range.max) + (classBonus.int or 0) + (raceBonus.int or 0),
-        vit = math.random(range.min, range.max) + (classBonus.vit or 0) + (raceBonus.vit or 0),
-        luck = math.random(range.min, range.max) + (classBonus.luck or 0) + (raceBonus.luck or 0)
-    }
+    -- D-rank heroes use FIXED stat templates (very challenging!)
+    -- Primary stat: 5, Secondary: 2, Tertiary: 1
+    local stats
+    if rank == "D" then
+        -- Fixed templates by class
+        local templates = {
+            Knight  = {str = 5, dex = 2, int = 1, vit = 2, luck = 1},  -- STR primary
+            Archer  = {str = 1, dex = 5, int = 1, vit = 2, luck = 2},  -- DEX primary
+            Mage    = {str = 1, dex = 1, int = 5, vit = 2, luck = 2},  -- INT primary
+            Rogue   = {str = 2, dex = 5, int = 1, vit = 1, luck = 2},  -- DEX primary, sneaky
+            Priest  = {str = 1, dex = 1, int = 5, vit = 2, luck = 2},  -- INT primary, healer
+            Ranger  = {str = 2, dex = 5, int = 1, vit = 2, luck = 1},  -- DEX primary, balanced
+            -- Awakened classes (shouldn't be D-rank, but just in case)
+            Paladin = {str = 5, dex = 2, int = 1, vit = 2, luck = 1},
+            Hawkeye = {str = 1, dex = 5, int = 1, vit = 2, luck = 2},
+            Archmage = {str = 1, dex = 1, int = 5, vit = 2, luck = 2},
+            Shadow = {str = 2, dex = 5, int = 1, vit = 1, luck = 2},
+            Saint = {str = 1, dex = 1, int = 5, vit = 2, luck = 2},
+            Warden = {str = 2, dex = 5, int = 1, vit = 2, luck = 1}
+        }
+        
+        -- Get template for this class
+        local template = templates[class] or {str = 2, dex = 2, int = 2, vit = 2, luck = 2}
+        
+        -- Start with template
+        stats = {
+            str = template.str,
+            dex = template.dex,
+            int = template.int,
+            vit = template.vit,
+            luck = template.luck
+        }
+    else
+        -- Higher ranks use scaled random generation
+        stats = {
+            str = math.random(range.min, range.max),
+            dex = math.random(range.min, range.max),
+            int = math.random(range.min, range.max),
+            vit = math.random(range.min, range.max),
+            luck = math.random(range.min, range.max)
+        }
+    end
+    
+    -- Apply class bonuses
+    stats.str = stats.str + (classBonus.str or 0)
+    stats.dex = stats.dex + (classBonus.dex or 0)
+    stats.int = stats.int + (classBonus.int or 0)
+    stats.vit = stats.vit + (classBonus.vit or 0)
+    stats.luck = stats.luck + (classBonus.luck or 0)
+    
+    -- Apply race bonuses
+    stats.str = stats.str + (raceBonus.str or 0)
+    stats.dex = stats.dex + (raceBonus.dex or 0)
+    stats.int = stats.int + (raceBonus.int or 0)
+    stats.vit = stats.vit + (raceBonus.vit or 0)
+    stats.luck = stats.luck + (raceBonus.luck or 0)
 
     -- Clamp stats to rank-specific cap
     for stat, value in pairs(stats) do
@@ -577,9 +626,16 @@ function Heroes.addXP(hero, amount)
         leveledUp = true
 
         -- Stat gain on level up (respects rank's stat cap)
+        -- Get stat gain amount based on rank (D/C = +2, B/A/S = +3)
+        local statGainPerLevel = data.config.statGainPerLevel or {D=1, C=1, B=1, A=1, S=1}
+        local statGain = statGainPerLevel[hero.rank] or 1
+        
+        -- Add multiple random stats based on rank
         local statKeys = {"str", "dex", "int", "vit", "luck"}
-        local randomStat = statKeys[math.random(#statKeys)]
-        hero.stats[randomStat] = math.min(statCap, hero.stats[randomStat] + 1)
+        for i = 1, statGain do
+            local randomStat = statKeys[math.random(#statKeys)]
+            hero.stats[randomStat] = math.min(statCap, hero.stats[randomStat] + 1)
+        end
     end
 
     -- At rank max level, XP is capped (need promotion to continue)

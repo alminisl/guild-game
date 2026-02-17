@@ -27,9 +27,11 @@ local SaveSystem = require("systems.save_system")
 local SettingsMenu = require("ui.settings_menu")
 local EditMode = require("ui.edit_mode")
 local MilestoneSystem = require("systems.milestone_system")
+local HeroSelection = require("ui.hero_selection")
 
 -- Game States
 local STATE = {
+    HERO_SELECT = "hero_select",
     TOWN = "town",
     TAVERN = "tavern",
     GUILD = "guild",
@@ -45,7 +47,7 @@ local gameData = {
     day = 1,
     dayProgress = 0,
     totalTime = 0,
-    gold = 300,
+    gold = 100,            -- Start with less gold (tutorial gives more)
     heroes = {},           -- Hired heroes
     tavernPool = {},       -- Heroes available for hire
     availableQuests = {},  -- Quests that can be assigned
@@ -58,11 +60,17 @@ local gameData = {
     graveyard = {},        -- Dead heroes (for display/resurrection)
     parties = {},          -- Formed parties (4 heroes with different classes, 3+ quests together)
     protoParties = {},     -- Proto-parties (forming, not yet official)
-    sRankQuestsToday = 0   -- Daily limit tracker for S-rank quests (max 2 per day)
+    sRankQuestsToday = 0,  -- Daily limit tracker for S-rank quests (max 2 per day)
+    tutorial = {           -- Tutorial state
+        active = true,
+        questsCompleted = 0,
+        questsRequired = 2,
+        welcomeShown = false
+    }
 }
 
 -- Current game state
-local currentState = STATE.TOWN
+local currentState = STATE.HERO_SELECT
 
 -- Notification system
 local notifications = {}
@@ -106,20 +114,47 @@ function love.load()
     gameData.tavernPool = Heroes.generateTavernPool(4, maxRank, guildLevel)
 
     -- Initialize available quests
-    gameData.availableQuests = Quests.generatePool(5, maxRank, gameData)
+    if gameData.tutorial.active then
+        -- Tutorial: Add 2 easy starter quests with good rewards
+        local tutorialQuest1 = Quests.generate("D", {
+            name = "Town Patrol",
+            description = "Help the guards patrol the town perimeter",
+            reward = 60,  -- Enough to hire 1 hero with some left over
+            xpReward = 30,
+            requiredStat = "str",
+            faction = "humans",
+            combat = false,
+            materialBonus = false,
+            timeOfDay = "day",
+            possibleRewards = {
+                { type = "gold", amount = 20, dropChance = 0.8 }
+            }
+        })
+        tutorialQuest1.isTutorial = true
+        
+        local tutorialQuest2 = Quests.generate("D", {
+            name = "Herb Delivery",
+            description = "Deliver herbs to the local healer",
+            reward = 50,  -- Together with quest 1, enough to hire 2 heroes
+            xpReward = 30,
+            requiredStat = "dex",
+            faction = "humans",
+            combat = false,
+            materialBonus = false,
+            timeOfDay = "day",
+            possibleRewards = {
+                { type = "gold", amount = 15, dropChance = 0.8 }
+            }
+        })
+        tutorialQuest2.isTutorial = true
+        
+        gameData.availableQuests = {tutorialQuest1, tutorialQuest2}
+    else
+        gameData.availableQuests = Quests.generatePool(5, maxRank, gameData)
+    end
 
-    -- Give player three starter heroes for a proper early game party
-    local starterKnight = Heroes.generate({rank = "D", name = "Marcus", race = "Human", class = "Knight"})
-    starterKnight.status = "idle"
-    table.insert(gameData.heroes, starterKnight)
-
-    local starterArcher = Heroes.generate({rank = "D", name = "Elena", race = "Elf", class = "Archer"})
-    starterArcher.status = "idle"
-    table.insert(gameData.heroes, starterArcher)
-
-    local starterPriest = Heroes.generate({rank = "D", name = "Brother Thomas", race = "Human", class = "Priest"})
-    starterPriest.status = "idle"
-    table.insert(gameData.heroes, starterPriest)
+    -- Starter hero will be selected by player in hero selection screen
+    -- (removed from here)
 
     -- Give player some starter materials for testing
     gameData.inventory.materials = {
@@ -145,6 +180,9 @@ function love.load()
 
     -- Initialize milestone tracking
     MilestoneSystem.init(gameData)
+    
+    -- Initialize hero selection screen (generate 4 random heroes to choose from)
+    HeroSelection.init(Heroes)
 end
 
 -- Update game (real-time)
@@ -154,6 +192,14 @@ function love.update(dt)
 
     -- Update guild menu mouse position for tooltips
     GuildMenu.updateMouse(mouseX, mouseY)
+    
+    -- Hero selection screen update
+    if currentState == STATE.HERO_SELECT then
+        HeroSelection.update(dt)
+        return  -- Skip game updates during hero selection
+    end
+    
+    -- Tutorial welcome message is now shown after hero selection (removed from here)
 
     -- Update hero sprite animations
     SpriteSystem.updateAll(gameData.heroes, dt)
@@ -197,17 +243,20 @@ function love.update(dt)
     end
 
     -- Quest refresh timer (add new quests periodically)
-    questRefreshTimer = questRefreshTimer + dt
-    if questRefreshTimer >= QUEST_REFRESH_INTERVAL then
-        questRefreshTimer = 0
-        if #gameData.availableQuests < 5 then
-            local maxRank = GuildSystem.getMaxTavernRank(gameData)
-            local newQuests = Quests.generatePool(1, maxRank, gameData)
-            for _, q in ipairs(newQuests) do
-                table.insert(gameData.availableQuests, q)
-            end
-            if #newQuests > 0 then
-                addNotification("A new quest is available!", "info")
+    -- Skip during tutorial
+    if not gameData.tutorial.active then
+        questRefreshTimer = questRefreshTimer + dt
+        if questRefreshTimer >= QUEST_REFRESH_INTERVAL then
+            questRefreshTimer = 0
+            if #gameData.availableQuests < 5 then
+                local maxRank = GuildSystem.getMaxTavernRank(gameData)
+                local newQuests = Quests.generatePool(1, maxRank, gameData)
+                for _, q in ipairs(newQuests) do
+                    table.insert(gameData.availableQuests, q)
+                end
+                if #newQuests > 0 then
+                    addNotification("A new quest is available!", "info")
+                end
             end
         end
     end
@@ -230,7 +279,9 @@ end
 -- Draw game
 function love.draw()
     -- Draw based on current state
-    if currentState == STATE.TOWN then
+    if currentState == STATE.HERO_SELECT then
+        HeroSelection.draw()
+    elseif currentState == STATE.TOWN then
         Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
     elseif currentState == STATE.TAVERN then
         Town.draw(gameData, mouseX, mouseY, TimeSystem, GuildSystem)
@@ -485,6 +536,26 @@ function love.mousepressed(x, y, button)
 
     if button ~= 1 then return end
 
+    -- Hero selection screen handling
+    if currentState == STATE.HERO_SELECT then
+        local result = HeroSelection.handleClick(x, y)
+        if result == "confirm" then
+            -- Player confirmed their hero choice
+            local selectedHero = HeroSelection.getSelectedHero()
+            if selectedHero then
+                selectedHero.status = "idle"
+                table.insert(gameData.heroes, selectedHero)
+                
+                -- Transition to town (tutorial will show notifications)
+                currentState = STATE.TOWN
+                
+                -- Show welcome notifications after a brief delay
+                addNotification("Welcome, Guild Master! Complete 2 starter quests to earn gold.", "info")
+            end
+        end
+        return
+    end
+
     -- Quest result modal takes priority
     if QuestResultModal.isOpen() then
         QuestResultModal.handleClick(x, y)
@@ -626,6 +697,24 @@ function love.mousepressed(x, y, button)
                 local msgType = claimResult.success and "success" or "warning"
                 addNotification(quest.name .. ": " .. (claimResult.success and "Complete!" or "Failed!"), msgType)
 
+                -- Track tutorial progress
+                if gameData.tutorial.active and quest.isTutorial and claimResult.success then
+                    gameData.tutorial.questsCompleted = gameData.tutorial.questsCompleted + 1
+                    
+                    if gameData.tutorial.questsCompleted >= gameData.tutorial.questsRequired then
+                        -- Tutorial complete! Enable full game
+                        gameData.tutorial.active = false
+                        addNotification("Tutorial Complete! The guild is now open for business!", "success")
+                        
+                        -- Refresh quest pool with normal quests
+                        local maxRank = GuildSystem.getMaxTavernRank(gameData)
+                        gameData.availableQuests = Quests.generatePool(5, maxRank, gameData)
+                    else
+                        local remaining = gameData.tutorial.questsRequired - gameData.tutorial.questsCompleted
+                        addNotification("Tutorial: Complete " .. remaining .. " more quest" .. (remaining > 1 and "s" or "") .. " to unlock the guild!", "info")
+                    end
+                end
+                
                 -- Track milestone progress
                 MilestoneSystem.onQuestComplete(gameData, quest, claimResult.success, heroList, claimResult.deadHeroes)
                 local newMilestones = MilestoneSystem.checkMilestones(gameData)
