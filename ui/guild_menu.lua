@@ -242,12 +242,8 @@ function GuildMenu.draw(gameData, QuestSystem, Quests, Heroes, TimeSystem, Guild
     love.graphics.translate(MENU.x, MENU.y)
     love.graphics.scale(currentScale, currentScale)
 
-    -- Background panel with paper texture (design coordinates)
-    UIAssets.drawPaper(0, 0, MENU_DESIGN_WIDTH, MENU_DESIGN_HEIGHT, {
-        special = false,
-        color = {0.95, 0.92, 0.88, 1},  -- Slight warm tint
-        alpha = 0.95
-    })
+    -- Background panel (design coordinates)
+    Components.drawPanel(0, 0, MENU_DESIGN_WIDTH, MENU_DESIGN_HEIGHT)
 
     -- Title
     love.graphics.setColor(Components.colors.text)
