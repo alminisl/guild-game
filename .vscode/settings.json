@@ -1,0 +1,26 @@
+{
+  // Lua Language Server configuration
+  "Lua.runtime.version": "LuaJIT",
+  
+  // Tell LSP that 'love' is a global from Love2D framework
+  "Lua.diagnostics.globals": [
+    "love"
+  ],
+  
+  // Load Love2D API definitions for autocomplete
+  "Lua.workspace.library": [
+    "${3rd}/love2d/library"
+  ],
+  
+  // Disable common false-positive warnings
+  "Lua.diagnostics.disable": [
+    "lowercase-global"
+  ],
+  
+  // Optional: Show workspace diagnostics
+  "Lua.diagnostics.workspaceDelay": 1000,
+  
+  // Optional: Improve performance for large projects
+  "Lua.workspace.maxPreload": 2000,
+  "Lua.workspace.preloadFileSize": 500
+}
